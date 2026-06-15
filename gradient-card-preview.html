@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gradient Card — เลือกแบบ</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Itim&family=Nunito:wght@400;600;700;800&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Nunito', sans-serif; background: #FFF3EC; color: #3A2A20; padding: 32px 18px 60px; }
+  .head { text-align: center; margin-bottom: 28px; }
+  .head h1 { font-size: 22px; }
+  .head p { color: #A98571; margin-top: 6px; font-size: 13px; }
+
+  .grid { max-width: 880px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
+  .item { text-align: center; }
+  .item .name { font-weight: 800; font-size: 13px; color: #A85A2E; margin-bottom: 10px; }
+
+  /* การ์ดตัวอย่าง */
+  .card {
+    border-radius: 24px; border: 2px solid #F6D8C5; padding: 22px; text-align: center;
+    color: #A85A2E;
+  }
+  .emoji { font-size: 26px; margin-bottom: 8px; }
+  .num { font-size: 28px; font-weight: 800; }
+  .label { font-size: 12px; color: #8a6d52; font-weight: 600; margin-top: 2px; }
+  .code { margin-top: 10px; font-size: 10px; color: #A98571; font-family: monospace; word-break: break-all; }
+
+  .g1 { background: linear-gradient(135deg, #FFF3DA 0%, #FFFBF0 100%); }
+  .g2 { background: linear-gradient(135deg, #FFE7D6 0%, #FFD9C2 100%); }
+  .g3 { background: linear-gradient(135deg, #FFD9DA 0%, #FFC4C9 100%); }
+  .g4 { background: linear-gradient(135deg, #FFE9A8 0%, #FBD3B9 100%); }
+  .g5 { background: linear-gradient(135deg, #FBD3B9 0%, #F8A978 100%); color:#7a3e1c; }
+  .g6 { background: linear-gradient(135deg, #FFC4C9 0%, #FBD3B9 60%, #FFE9A8 100%); }
+  .g7 { background: linear-gradient(135deg, #F9950B 0%, #FFB84D 100%); color:#fff; border-color:#F9950B; }
+  .g8 { background: linear-gradient(135deg, #FF9A9E 0%, #FAD0C4 100%); color:#8a3a3a; }
+  .g9 { background: linear-gradient(135deg, #FBC2EB 0%, #FBD3B9 100%); color:#8a4a6a; }
+  .g10 { background: radial-gradient(circle at 30% 20%, #FFF3DA, #FBD3B9); }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>Gradient Card 10 แบบ</h1>
+    <p>ชอบแบบไหนบอกหมายเลขได้เลย</p>
+  </div>
+  <div class="grid" id="grid"></div>
+<script>
+  const cards = [
+    ['1 · ทองอ่อนนุ่ม', 'g1', 'linear-gradient(135deg,#FFF3DA,#FFFBF0)'],
+    ['2 · พีชครีม', 'g2', 'linear-gradient(135deg,#FFE7D6,#FFD9C2)'],
+    ['3 · ชมพูพาสเทล', 'g3', 'linear-gradient(135deg,#FFD9DA,#FFC4C9)'],
+    ['4 · เหลือง→พีช', 'g4', 'linear-gradient(135deg,#FFE9A8,#FBD3B9)'],
+    ['5 · พีชเข้ม', 'g5', 'linear-gradient(135deg,#FBD3B9,#F8A978)'],
+    ['6 · พาสเทล 3 สี', 'g6', 'linear-gradient(135deg,#FFC4C9,#FBD3B9,#FFE9A8)'],
+    ['7 · ส้มสด (เด่น)', 'g7', 'linear-gradient(135deg,#F9950B,#FFB84D)'],
+    ['8 · ชมพูส้มหวาน', 'g8', 'linear-gradient(135deg,#FF9A9E,#FAD0C4)'],
+    ['9 · ชมพู→พีช', 'g9', 'linear-gradient(135deg,#FBC2EB,#FBD3B9)'],
+    ['10 · เรเดียลทอง', 'g10', 'radial-gradient(circle at 30% 20%,#FFF3DA,#FBD3B9)'],
+  ];
+  const grid = document.getElementById('grid');
+  cards.forEach(([name, cls, code]) => {
+    grid.insertAdjacentHTML('beforeend', `
+      <div class="item">
+        <div class="name">${name}</div>
+        <div class="card ${cls}">
+          <div class="emoji">⭐</div>
+          <div class="num">1,250</div>
+          <div class="label">แต้มที่ใช้ไป</div>
+        </div>
+        <div class="code">${code}</div>
+      </div>
+    `);
+  });
+</script>
+</body>
+</html>

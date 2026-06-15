@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>✨ แสงขอบ Card 5 แบบ</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&display=swap');
+  @property --angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Nunito', sans-serif;
+    background: #FFF3EC;
+    color: #3A2A20;
+    padding: 40px 20px 80px;
+  }
+  .head { text-align: center; margin-bottom: 36px; }
+  .head h1 { font-size: 24px; }
+  .head p { color: #A98571; margin-top: 6px; font-size: 14px; }
+
+  .grid {
+    max-width: 920px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 40px 28px;
+  }
+  .item { text-align: center; }
+  .item .label { font-weight: 800; margin-bottom: 14px; font-size: 15px; }
+  .item .code { margin-top: 12px; font-size: 11px; color: #A98571; font-family: monospace; }
+
+  /* ── การ์ดพื้นฐาน (เนื้อหาในนั้น) ── */
+  .card {
+    border-radius: 18px;
+    background: linear-gradient(135deg, #FFF3DA 0%, #FFFBF0 100%);
+    padding: 22px 26px;
+    border: 2px solid #F6D8C5;
+    display: inline-block;
+  }
+  .card .title { font-size: 18px; font-weight: 800; color: #A85A2E; }
+
+  /* ───────── 1) เรืองนิ่ง ───────── */
+  .glow-soft {
+    box-shadow: 0 0 18px rgba(249, 149, 11, 0.45);
+  }
+
+  /* ───────── 2) เรืองหายใจ ───────── */
+  .glow-pulse { animation: pulse 2.2s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(249, 149, 11, 0.25); }
+    50%      { box-shadow: 0 0 22px rgba(249, 149, 11, 0.75); }
+  }
+
+  /* ───────── 3) ขอบไล่สีหมุน ───────── */
+  .glow-rotate {
+    position: relative;
+    border: none;
+  }
+  .glow-rotate::before {
+    content: '';
+    position: absolute; inset: 0;
+    border-radius: inherit;
+    padding: 2.5px;
+    background: conic-gradient(from var(--angle),
+      #FFD24A, #F9950B, #FFE08A, #F9950B, #FFD24A);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    animation: spin 4s linear infinite;
+  }
+  @keyframes spin { to { --angle: 360deg; } }
+
+  /* ───────── 4) แสงกวาดขอบ ───────── */
+  .glow-sweep {
+    position: relative;
+    border: 2px solid #F6D8C5;
+  }
+  .glow-sweep::before {
+    content: '';
+    position: absolute; inset: -2px;
+    border-radius: inherit;
+    padding: 2.5px;
+    background: conic-gradient(from var(--angle),
+      transparent 0deg, transparent 280deg,
+      #FFE08A 320deg, #FFFFFF 340deg, #FFE08A 360deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    animation: spin 2.8s linear infinite;
+  }
+
+  /* ───────── 5) นีออน ───────── */
+  .glow-neon {
+    border: 2px solid #FFB84D;
+    animation: neon 1.8s ease-in-out infinite alternate;
+  }
+  @keyframes neon {
+    from {
+      box-shadow: 0 0 4px #FFB84D, 0 0 8px rgba(249,149,11,.5);
+      border-color: #FFC76B;
+    }
+    to {
+      box-shadow: 0 0 10px #FFB84D, 0 0 22px #F9950B, 0 0 34px rgba(249,149,11,.6);
+      border-color: #FF9E2C;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>✨ แสงขอบ Card — 5 แบบ</h1>
+    <p>เลือกแบบที่ชอบ แล้วบอกหมายเลข (1–5)</p>
+  </div>
+
+  <div class="grid">
+    <div class="item">
+      <div class="label">1 · เรืองนิ่ง (Soft Glow)</div>
+      <div class="card glow-soft"><div class="title">🌟 รางวัลพิเศษ</div></div>
+      <div class="code">box-shadow: 0 0 18px gold</div>
+    </div>
+
+    <div class="item">
+      <div class="label">2 · เรืองหายใจ (Pulse)</div>
+      <div class="card glow-pulse"><div class="title">🌟 รางวัลพิเศษ</div></div>
+      <div class="code">animation: pulse box-shadow</div>
+    </div>
+
+    <div class="item">
+      <div class="label">3 · ขอบไล่สีหมุน (Gradient)</div>
+      <div class="card glow-rotate"><div class="title">🌟 รางวัลพิเศษ</div></div>
+      <div class="code">conic-gradient หมุนรอบขอบ</div>
+    </div>
+
+    <div class="item">
+      <div class="label">4 · แสงกวาดขอบ (Sweep)</div>
+      <div class="card glow-sweep"><div class="title">🌟 รางวัลพิเศษ</div></div>
+      <div class="code">แสงจุดเดียววิ่งรอบขอบ</div>
+    </div>
+
+    <div class="item">
+      <div class="label">5 · นีออน (Neon)</div>
+      <div class="card glow-neon"><div class="title">🌟 รางวัลพิเศษ</div></div>
+      <div class="code">box-shadow หลายชั้น สว่างจัด</div>
+    </div>
+  </div>
+</body>
+</html>

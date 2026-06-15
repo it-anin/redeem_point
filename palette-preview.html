@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>🎨 โทนสีพาสเทล 5 แบบ — Cream Rewards</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Nunito', sans-serif;
+    background: #f3f4f6;
+    color: #1f2937;
+    padding: 32px 20px 60px;
+  }
+  .head { max-width: 1100px; margin: 0 auto 28px; text-align: center; }
+  .head h1 { font-size: 26px; }
+  .head p { color: #6b7280; margin-top: 6px; font-size: 14px; }
+
+  .grid {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 22px;
+  }
+
+  /* ── การ์ดธีมแต่ละแบบ ── */
+  .theme {
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(0,0,0,.05);
+  }
+  .theme-name {
+    padding: 14px 18px;
+    font-size: 16px;
+    font-weight: 800;
+    color: #111827;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ── แถบสี swatch ── */
+  .swatches { display: flex; }
+  .sw { flex: 1; height: 54px; position: relative; }
+  .sw span {
+    position: absolute; bottom: 4px; left: 0; right: 0;
+    text-align: center; font-size: 9px; font-weight: 700;
+    color: rgba(0,0,0,.55);
+  }
+
+  /* ── mockup (ใช้ตัวแปร CSS ของแต่ละธีม) ── */
+  .mock { padding: 18px; background: var(--bg); }
+  .mock-topbar {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: 14px; padding: 8px 12px; margin-bottom: 14px;
+  }
+  .mock-logo {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: var(--primary); border: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+  }
+  .mock-logo-txt { font-size: 13px; font-weight: 800; color: var(--primary-dark); }
+
+  .mock-card {
+    background: var(--surface); border: 2px solid var(--border);
+    border-radius: 18px; padding: 14px; margin-bottom: 14px;
+  }
+  .mock-chip {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 2px solid var(--border);
+    border-radius: 30px; padding: 8px 16px 8px 8px; margin-bottom: 14px;
+  }
+  .avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--accent); border: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 800; color: var(--primary-dark);
+  }
+  .chip-name { font-size: 13px; font-weight: 700; color: var(--text); }
+  .chip-pts { font-size: 18px; font-weight: 800; color: var(--primary-dark); line-height: 1; }
+  .chip-pts small { font-size: 10px; color: var(--muted); font-weight: 600; }
+
+  .reward-img {
+    width: 100%; height: 70px; border-radius: 12px;
+    background: var(--bg); border: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: center; font-size: 34px;
+    margin-bottom: 10px;
+  }
+  .reward-name { font-size: 13px; font-weight: 700; color: var(--text); text-align: center; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--primary); color: var(--primary-dark);
+    font-size: 11px; font-weight: 700; padding: 4px 12px;
+    border-radius: 20px; border: 1px solid var(--border); margin: 8px auto;
+  }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .btn {
+    flex: 1; text-align: center;
+    background: var(--primary); color: var(--primary-dark);
+    border: 1.5px solid var(--border); border-radius: 12px;
+    font-weight: 700; font-size: 13px; padding: 10px; cursor: pointer;
+    font-family: 'Nunito', sans-serif;
+  }
+  .badge {
+    font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+    background: var(--accent); color: var(--primary-dark);
+  }
+  .center { text-align: center; }
+
+  .code {
+    background: #1f2937; color: #d1d5db; font-size: 11px;
+    padding: 12px 14px; font-family: monospace; white-space: pre;
+    overflow-x: auto;
+  }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>🎨 โทนสีพาสเทล 5 แบบ</h1>
+    <p>เลือกแบบที่ชอบ แล้วบอกหมายเลข (1–5) ผมจะนำไปใช้กับแอปให้</p>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+<script>
+const themes = [
+  {
+    name: '1 · Sky & Rose 🩵',
+    vars: { bg:'#FAEBF0', surface:'#FFFFFF', primary:'#B9DCF0', 'primary-dark':'#2F6086', border:'#C4DAEB', accent:'#F7D6D1', text:'#2A3340', muted:'#7C8A99' },
+  },
+  {
+    name: '2 · Mint & Cream 🌿',
+    vars: { bg:'#F1FAF4', surface:'#FFFFFF', primary:'#BFE6CB', 'primary-dark':'#2E6B4F', border:'#CDE8D6', accent:'#FCE6C7', text:'#26332C', muted:'#7C9588' },
+  },
+  {
+    name: '3 · Lavender Dream 💜',
+    vars: { bg:'#F6F1FB', surface:'#FFFFFF', primary:'#D6C8EE', 'primary-dark':'#5B4A86', border:'#DCD2EE', accent:'#F4D6E7', text:'#322B40', muted:'#8A82A0' },
+  },
+  {
+    name: '4 · Peach & Coral 🍑',
+    vars: { bg:'#FFF3EC', surface:'#FFFFFF', primary:'#FBD3B9', 'primary-dark':'#A85A2E', border:'#F6D8C5', accent:'#FFE7A6', text:'#3A2A20', muted:'#A98571' },
+  },
+  {
+    name: '5 · Butter & Sage 🧈',
+    vars: { bg:'#FBF7E9', surface:'#FFFFFF', primary:'#FBE7A4', 'primary-dark':'#8A6D1E', border:'#E7DBAE', accent:'#CFE3C2', text:'#332E1F', muted:'#9A8C66' },
+  },
+];
+
+const grid = document.getElementById('grid');
+
+themes.forEach(t => {
+  const styleVars = Object.entries(t.vars).map(([k,v]) => `--${k}:${v}`).join(';');
+  const swatchKeys = ['bg','primary','primary-dark','border','accent'];
+  const swatches = swatchKeys.map(k =>
+    `<div class="sw" style="background:${t.vars[k]}"><span>${t.vars[k]}</span></div>`
+  ).join('');
+
+  const codeBlock =
+`:root {
+  --bg: ${t.vars.bg};
+  --surface: ${t.vars.surface};
+  --primary: ${t.vars.primary};
+  --primary-dark: ${t.vars['primary-dark']};
+  --border: ${t.vars.border};
+  --text: ${t.vars.text};
+  --text-muted: ${t.vars.muted};
+}
+/* avatar */ background: ${t.vars.accent};`;
+
+  grid.insertAdjacentHTML('beforeend', `
+    <div class="theme">
+      <div class="theme-name">${t.name}</div>
+      <div class="swatches">${swatches}</div>
+      <div class="mock" style="${styleVars}">
+        <div class="mock-topbar">
+          <div class="mock-logo">🥚</div>
+          <div class="mock-logo-txt">Cream Rewards</div>
+        </div>
+        <div class="mock-chip">
+          <div class="avatar">ม</div>
+          <div style="flex:1">
+            <div class="chip-name">มนัสวิน</div>
+          </div>
+          <div class="chip-pts">270 <small>แต้ม</small></div>
+        </div>
+        <div class="mock-card">
+          <div class="reward-img">🎁</div>
+          <div class="reward-name">กาแฟฟรี 1 แก้ว</div>
+          <div class="center"><span class="pill">⭐ 150 แต้ม</span></div>
+          <div class="row">
+            <button class="btn">แลกเลย!</button>
+          </div>
+          <div class="center" style="margin-top:10px"><span class="badge">เหลือ 5</span></div>
+        </div>
+      </div>
+      <div class="code">${codeBlock}</div>
+    </div>
+  `);
+});
+</script>
+</body>
+</html>

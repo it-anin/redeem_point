@@ -1,0 +1,223 @@
+# Cream Rewards — ระบบสะสมแต้มแลกรางวัลพนักงาน
+
+เว็บแอปสะสมแต้ม/แลกรางวัลของพนักงาน แบ่งผู้ใช้เป็น 2 บทบาท:
+- **พนักงาน (employee)** → ใช้งานแบบ **มือถือ (mobile)** เสมอทุกขนาดจอ
+- **แอดมิน/HR (admin)** → ใช้งานแบบ **เดสก์ท็อป (desktop)** มี sidebar
+
+---
+
+## Tech stack
+
+- **React (Create React App / react-scripts)** — ไม่ใช่ Vite
+- **React Router v6** — routing
+- **Firebase** — Authentication (Google เท่านั้น) + Cloud Firestore
+- **Cloudinary** — เก็บรูป/ไฟล์ (รูปหลักฐานการแลก, PDF ประกาศ) แบบ unsigned upload
+- **pdf-lib** — เช็คจำนวนหน้า PDF ตอนแนบประกาศ
+- ฟอนต์: **Nunito** (หลัก) + **Itim** (ข้อความน่ารัก/กล่องคำพูด) จาก Google Fonts
+
+---
+
+## การรัน / ตั้งค่า
+
+```bash
+npm install
+npm start        # dev server ที่ http://localhost:3000
+```
+
+### ไฟล์ `.env` (ต้องมี — React อ่านตอน start เท่านั้น แก้แล้วต้อง restart)
+```
+REACT_APP_FIREBASE_API_KEY=...
+REACT_APP_FIREBASE_AUTH_DOMAIN=...
+REACT_APP_FIREBASE_PROJECT_ID=...
+REACT_APP_FIREBASE_STORAGE_BUCKET=...
+REACT_APP_FIREBASE_MESSAGING_SENDER_ID=...
+REACT_APP_FIREBASE_APP_ID=...
+REACT_APP_CLOUDINARY_CLOUD_NAME=...
+REACT_APP_CLOUDINARY_UPLOAD_PRESET=...   # ต้องเป็น Unsigned preset
+```
+
+### สิ่งที่ต้องตั้งค่าฝั่ง Cloud
+1. **Firebase Auth** → เปิด Google sign-in + ใส่ domain ใน Authorized domains
+2. **Firestore Rules** → publish เนื้อหาจาก `firestore.rules`
+3. **Cloudinary** → unsigned upload preset + เปิด "Allow delivery of PDF and ZIP files" (สำหรับ PDF ประกาศ)
+4. **Bootstrap admin คนแรก** → สร้าง doc ใน `employees` ด้วยมือ (Document ID = อีเมล, role = `admin`)
+
+---
+
+## โครงสร้างไฟล์
+
+```
+public/                 # รูปไอคอน/โลโก้ (icon.png, Home.png, Megaphone.png, iconcheck.png ฯลฯ)
+src/
+  index.js, index.css   # entry + CSS+theme ทั้งหมด (ตัวแปรสี + คลาส utility)
+  App.jsx               # router + guard (RequireAuth / RequireAdmin)
+  firebase.js           # init firebase (auth, db)
+  cloudinary.js         # uploadFileToCloudinary() — รูป/PDF
+  context/AuthContext.jsx
+  components/
+    Layout.jsx          # ตัวกำหนด desktop sidebar vs mobile (forceMobile)
+    Sidebar.jsx         # Sidebar / MobileNav (drawer) / BottomNav
+  pages/
+    Login.jsx
+    Dashboard.jsx       # [mobile] หน้าหลักพนักงาน — แลกรางวัล
+    Announcements.jsx   # [mobile] ประกาศ (ฝั่งพนักงาน)
+    History.jsx         # [mobile] ประวัติการแลก (ฝั่งพนักงาน)
+    Admin.jsx           # [desktop] ภาพรวม
+    AdminEmployees.jsx  # [desktop] จัดการพนักงาน
+    AdminRewards.jsx    # [desktop] จัดการรางวัล
+    AdminApprovals.jsx  # [desktop] อนุมัติของรางวัล
+    AdminAnnouncements.jsx # [desktop] จัดการประกาศ
+    AdminHistory.jsx    # [desktop] ประวัติทั้งหมด + audit log
+    MobilePreview.jsx   # [desktop] พรีวิวหน้าจอพนักงานในกรอบมือถือ
+```
+
+---
+
+## ระบบล็อกอิน (AuthContext.jsx)
+
+- **Google sign-in อย่างเดียว** (`signInWithPopup`)
+- จับคู่พนักงานด้วย **อีเมล** → `employees/{อีเมล}`
+- ถ้าล็อกอินแล้วยังไม่มี employee doc → เข้าสู่ขั้น **ผูกบัญชีครั้งแรก**: กรอก **รหัสพนักงาน** → ดึงข้อมูลจาก `pendingEmployees/{รหัส}` มาสร้าง `employees/{อีเมล}` แล้วลบ pending
+- `profile.role === 'admin'` → เป็นแอดมิน
+- `patchProfile()` — อัปเดตแต้มในหน้าจอทันทีหลังแลก (ไม่ต้อง refresh)
+- **redirect หลัง login เป็นแบบ declarative** — `Login.jsx` ไม่เรียก `navigate()` เองหลัง popup (จะ race กับ `onAuthStateChanged` ที่ยัง `getDoc` profile ไม่เสร็จ → เด้งกลับ login ต้องกด 2 รอบ) แต่ใช้ `if (user) return <Navigate to="/" replace />` รอจน profile พร้อมแล้วค่อยพาเข้าหน้าหลัก
+- **หน้า login มีตัวการ์ตูนเคลื่อนไหว** `iconmove.webp` (พื้นหลังโปร่งใส 160×160px) แทน emoji เดิม
+
+---
+
+## โครงสร้างข้อมูล Firestore
+
+| Collection | Doc ID | ฟิลด์สำคัญ |
+|------------|--------|-----------|
+| `employees` | อีเมล | name, email, department, points, role(`admin`/`employee`), code, createdAt |
+| `pendingEmployees` | รหัสพนักงาน | name, code, department, points, role, createdAt (รอผูกบัญชี) |
+| `rewards` | auto | name, description, pointCost, stock, unlimited, type(`normal`/`special`), emoji, image, requireProof, createdAt |
+| `transactions` | auto | employeeId(=อีเมล), employeeName, rewardId, rewardName, pointsUsed, status, approval, proofUrl, note, createdAt |
+| `announcements` | auto | title, body, pdfUrl, pdfName, createdAt |
+| `auditLogs` | auto | action, txId, employeeName, rewardName, detail, by, at (เก็บถาวร แก้/ลบไม่ได้) |
+
+### ⚠️ ข้อตกลงเครื่องหมาย `pointsUsed` (สำคัญมาก)
+- **แลกรางวัล** → `pointsUsed` เป็น **บวก** (ใช้แต้มไป)
+- **admin เพิ่มแต้ม** → `pointsUsed` เป็น **ลบ** (ได้รับ)
+- **admin หักแต้ม** → `pointsUsed` เป็น **บวก**
+- ผลต่อยอดแต้มพนักงาน = `-pointsUsed` เสมอ
+
+### สถานะ `approval` (เฉพาะรายการแลกรางวัล)
+`รออนุมัติ` → `อนุมัติแล้ว` / `ปฏิเสธ` (ปฏิเสธจะคืนแต้ม + คืนสต็อก)
+
+---
+
+## 📱 หน้า MOBILE (พนักงาน)
+
+พนักงานถูกบังคับเป็น layout มือถือเสมอ (`forceMobile` ใน `Layout.jsx`) — ซ่อน sidebar เดสก์ท็อป, แสดง topbar (แบนเนอร์ `texttopbar.png` กดเปิด drawer) + bottom nav
+
+### เมนูล่าง (BottomNav) — `NAV_EMPLOYEE`
+1. **หน้าหลัก** (Home.png) → `/dashboard`
+2. **ประกาศ** (Megaphone.png) → `/announcements` — มี **badge ตัวเลข** ประกาศที่ยังไม่อ่าน
+3. **ประวัติการแลก** → `/history`
+
+### Drawer (แฮมเบอร์เกอร์ / กด topbar)
+แบบ compact: โลโก้ (iconsleep.png) + กล่องคำพูด + การ์ดข้อมูล (ชื่อ/แผนก/รหัสพนักงาน) + ปุ่มออกจากระบบ
+
+### Dashboard.jsx (หน้าหลัก)
+- ทักทาย + รูปโลโก้ + กล่องคำพูด (speech bubble)
+- **ชิปแต้มคงเหลือ** — "แต้มคงเหลือทั้งหมด" + ตัวเลขแต้ม มีแสงนีออนชมพูฟุ้ง (`.neon-glow`) → **กดเพื่อดู popup "แต้มที่ได้รับเดือนนี้"** (jelly in/out)
+- รางวัลแยก 2 กลุ่ม: **🌟 รางวัลพิเศษ** (badge pulse) / **🎁 รางวัลปกติ**
+- การ์ดรางวัล: รูป/emoji, ป้ายสต็อก (ขาว), ป้ายประเภท, รายละเอียด, ราคาแต้ม, ปุ่มแลก
+  - แต้มไม่พอ → ปุ่ม "แต้มไม่พอ!" กดแล้วเด้ง popup "ทำงานก่อนนะ"
+  - รางวัล `requireProof` → ต้องแนบรูปหลักฐาน (Cloudinary) ก่อนยืนยัน
+- แลกแล้ว → สร้าง transaction `approval: 'รออนุมัติ'`, หักแต้มทันที
+- popup แจ้งเตือนเมื่อ admin อนุมัติ (จำด้วย localStorage `approvedSeen_<email>`)
+
+### Announcements.jsx (ประกาศ)
+- โลโก้ iconmegaphone.png + กล่องคำพูด, ฟอนต์ทั้งหน้าเป็น Itim
+- แสดงประกาศ + ถ้ามี PDF (หน้าเดียว) แสดงเป็นรูป (Cloudinary `pg_1` render) + ลิงก์เปิดต้นฉบับ
+
+### History.jsx (ประวัติการแลก)
+- โลโก้ iconcheck.png + กล่องคำพูด
+- แสดง **เฉพาะรายการที่แลกรางวัลเอง** (มี `rewardId`) ไม่รวม admin ปรับแต้ม
+- การ์ด "แต้มที่ใช้ไป" + รายการพร้อม **สถานะอนุมัติ** (รออนุมัติ/อนุมัติแล้ว/ปฏิเสธ)
+
+---
+
+## 🖥️ หน้า DESKTOP (admin)
+
+admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจอแคบจะกลายเป็น topbar+drawer
+
+### เมนู sidebar — `NAV_ADMIN`
+- 📊 Overview → `/admin`
+- 👥 พนักงาน → `/admin/employees`
+- 🎁 จัดการรางวัล → `/admin/rewards`
+- ✅ อนุมัติของรางวัล → `/admin/approvals`
+- 📢 จัดการประกาศ → `/admin/announcements`
+- 📜 ประวัติทั้งหมด → `/admin/history`
+- หมวด "มุมมองพนักงาน" → 📱 พนักงาน (แสดงผล) → `/admin/preview`
+
+### Admin.jsx (ภาพรวม)
+การ์ดสถิติ + รายการล่าสุด + อันดับแต้มสะสม (กรอง admin ออก) + สต็อกรางวัล
+
+### AdminEmployees.jsx (จัดการพนักงาน)
+- เพิ่มพนักงานด้วย **รหัสพนักงาน** (ไม่ต้องรู้อีเมล) → สร้าง `pendingEmployees/{รหัส}`
+- ตารางรวม "เข้าระบบแล้ว" + "รอผูกบัญชี"
+- **เพิ่มแต้ม** (อย่างเดียว ไม่หัก) + **ลบพนักงาน**
+
+### AdminRewards.jsx (จัดการรางวัล)
+- เพิ่ม/แก้/ลบ รางวัล — ประเภท (ปกติ/พิเศษ), รูปจาก **URL** (รองรับแปลงลิงก์ Google Drive), ไม่จำกัดจำนวน, ต้องแนบหลักฐาน
+- เรียงแยก 2 กลุ่ม (พิเศษ/ปกติ) เหมือนฝั่งมือถือ
+- กด "แก้ไข" → เลื่อนขึ้นไปที่ฟอร์มอัตโนมัติ
+
+### AdminApprovals.jsx (อนุมัติของรางวัล)
+- รายการที่พนักงานแลกเข้ามา (มี `rewardId`) — กรองตามสถานะ
+- ดูรูปหลักฐาน → **อนุมัติ** หรือ **ปฏิเสธ** (คืนแต้ม + คืนสต็อก)
+
+### AdminAnnouncements.jsx (จัดการประกาศ)
+- โพสต์/ลบประกาศ + แนบ **PDF หน้าเดียว** (เช็คด้วย pdf-lib → อัป Cloudinary)
+
+### AdminHistory.jsx (ประวัติทั้งหมด)
+- ทุกธุรกรรม — **แก้ไข** (ปรับยอดพนักงานตามส่วนต่าง) / **ลบ** (คืนแต้ม+สต็อก)
+- ทุกการแก้/ลบบันทึกลง **auditLogs** (ดูได้ในปุ่ม "บันทึกการแก้ไข")
+
+### MobilePreview.jsx (พนักงาน (แสดงผล))
+แสดงหน้าพนักงานในกรอบมือถือ (iframe + `?preview=employee` บังคับ layout/เมนูแบบพนักงาน)
+
+---
+
+## ข้อตกลง UI / สไตล์ (index.css)
+
+- **ธีมสี Peach & Coral** — กำหนดที่ `:root` (`--bg`, `--primary`, `--primary-dark`, `--border` ฯลฯ) แก้ที่เดียวเปลี่ยนทั้งแอป
+- **ฟอนต์**: Nunito (หลัก) + **Itim** (กล่องคำพูด, sidebar/drawer, ข้อความน่ารัก) — import บรรทัดบนสุดของ index.css
+- **`.speech-bubble`** — กล่องคำพูดพื้นขาว หางชี้ซ้าย ฟอนต์ Itim (ใช้ Dashboard/Announcements/History/Sidebar)
+- **`.card`, `.btn-primary`, `.badge`, `.cost-pill`, `.stat-card`** — คลาส utility ใช้ร่วมทุกหน้า (แก้คลาส = กระทบทุกที่; อยากแยกใช้ inline style)
+- **`forceMobile`** = ไม่ใช่ admin หรือ `?preview=employee` → บังคับ layout มือถือ
+- **topbar กดทั้งแถบเพื่อเปิด drawer** (ไม่มีปุ่มแฮมเบอร์เกอร์แล้ว); พนักงานเห็นแบนเนอร์ `texttopbar.png`, admin เห็นไอคอน+ชื่อ
+- ตัด tap-highlight สีฟ้าตอนแตะ + focus outline ออกแล้ว (`* { -webkit-tap-highlight-color: transparent }`)
+
+### รูปภาพใน `public/` (อ้างด้วย path `/ชื่อไฟล์` — เปลี่ยนรูปทับชื่อเดิมได้โดยไม่ต้องแก้โค้ด + hard refresh)
+`icon.png` (โลโก้หัว Dashboard/topbar admin), `texttopbar.png` (แบนเนอร์ topbar พนักงาน), `Home.png` / `Megaphone.png` (ไอคอน bottom nav), `iconsleep.png` (โลโก้ drawer), `iconmegaphone.png` (หัวหน้าประกาศ), `iconcheck.png` (หัวหน้าประวัติ), `star-profile.png`, `iconmove.webp` (การ์ตูนเคลื่อนไหวหน้า login — สร้างจาก `iconmove.gif` ลบพื้นหลังด้วย flood fill จากขอบให้โปร่งใส)
+
+### อนิเมชัน (index.css)
+- **`.special-card`** — การ์ดรางวัลพิเศษ แสงกวาดขอบ (conic-gradient + `@property --angle`)
+- **`.neon-glow`** — ชิปแต้มเรืองนีออนชมพูฟุ้ง (กระพริบ)
+- **`.shine-sweep`** — แสงขาวกวาดผ่านการ์ด (การ์ด "แต้มที่ใช้ไป" + gradient เรเดียลทอง)
+- **popup** — เปิด/ปิดมีอนิเมชัน ใช้รูปแบบ **closing-state** (หน่วง unmount ด้วย setTimeout ให้อนิเมชันเล่นจบ):
+  - popup แต้มที่ได้รับ = jelly in / jelly out (`.modal-jelly` / `.modal-jelly-out`)
+  - ยืนยันการแลก + แต้มไม่พอ = slide up in/out (`.modal-slideup` / `.modal-slideup-out`, ขอบหนา 4px)
+  - overlay จางเข้า/ออก (`.modal-overlay` / `.overlay-out`)
+- **เปลี่ยนหน้า (route transition)** — `.page-enter` (Slide Left) ที่ wrapper ของ `<Outlet>` ใน Layout โดยใส่ `key={location.pathname}` ให้ remount เล่นอนิเมชันใหม่; `.main` ตั้ง `overflow-x: clip` กันเนื้อหาสไลด์ล้น
+
+### แจ้งเตือน / localStorage (ฝั่งพนักงาน)
+- **Badge ประกาศใหม่** — ที่ไอคอน 📢 ใน bottom nav แสดงจำนวนประกาศที่ยังไม่อ่าน (เกิน 9 = "9+"); เคลียร์เมื่อเข้าหน้าประกาศ
+- คีย์ localStorage (ต่อเครื่อง/เบราว์เซอร์):
+  - `announcementsSeen_<email>` — id ประกาศที่อ่านแล้ว (คุม badge)
+  - `approvedSeen_<email>` — รายการแลกที่แจ้งเตือน "อนุมัติแล้ว" ไปแล้ว (กัน popup เด้งซ้ำ)
+
+---
+
+## Firestore Rules (สรุป)
+- `employees` — อ่านได้เฉพาะของตัวเอง(อีเมล)/admin; พนักงานสร้าง doc ตัวเองตอนผูกบัญชี (ดึง role/points จาก pending); พนักงานลดแต้มตัวเองได้เฉพาะตอนแลก; admin แก้/ลบได้
+- `rewards` — อ่านได้ทุกคน(ล็อกอิน); admin สร้าง/ลบ; ลดสต็อกทีละ 1 ได้ตอนแลก
+- `transactions` — อ่าน/สร้างได้ทุกคน(ล็อกอิน); แก้/ลบเฉพาะ admin
+- `pendingEmployees` — อ่านได้(ล็อกอิน); admin สร้าง/แก้; ลบได้โดย admin หรือผู้ที่ผูกบัญชีด้วยรหัสนั้น
+- `announcements` — อ่านได้ทุกคน; เขียนเฉพาะ admin
+- `auditLogs` — admin อ่าน/สร้าง; แก้/ลบไม่ได้ (immutable)
+- helper `isAdmin()` = doc `employees/{อีเมล}` มี role == 'admin'

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>อนิเมชันเปลี่ยนหน้า — เลือกแบบ</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Itim&family=Nunito:wght@400;700;800&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Nunito', sans-serif; background: #FFF3EC; color: #3A2A20; padding: 28px 16px 40px; }
+  .head { text-align: center; margin-bottom: 20px; }
+  .head h1 { font-size: 20px; }
+  .head p { color: #A98571; margin-top: 6px; font-size: 13px; }
+
+  .picker { max-width: 420px; margin: 0 auto 18px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .pick { background:#fff; border:1.5px solid #F6D8C5; border-radius:12px; padding:10px; cursor:pointer; font-family:'Nunito'; font-weight:800; font-size:13px; color:#A85A2E; }
+  .pick small { display:block; font-weight:600; color:#A98571; font-size:11px; margin-top:2px; }
+  .pick.active { background:#FBD3B9; }
+
+  /* กรอบมือถือจำลอง */
+  .phone { max-width: 360px; margin: 0 auto; background:#A85A2E; border-radius:32px; padding:8px; }
+  .screen { background:#FFF3EC; border-radius:26px; height: 460px; overflow:hidden; position: relative; }
+  .content { padding: 24px 18px; }
+  .content h2 { font-size: 22px; margin-bottom: 10px; }
+  .content .card { background:#fff; border:2px solid #F6D8C5; border-radius:18px; padding:16px; margin-bottom:12px; }
+
+  .tabs { display:flex; background:#fff; border-top:2px solid #F6D8C5; position:absolute; bottom:0; left:0; right:0; }
+  .tab { flex:1; text-align:center; padding:10px 0; font-size:12px; font-weight:700; color:#A98571; cursor:pointer; }
+  .tab.active { color:#A85A2E; }
+
+  /* ── อนิเมชันแต่ละแบบ ── */
+  .fade      { animation: t-fade .35s ease; }
+  @keyframes t-fade { from{opacity:0;} to{opacity:1;} }
+
+  .fadeup    { animation: t-fadeup .35s cubic-bezier(.16,1,.3,1); }
+  @keyframes t-fadeup { from{opacity:0;transform:translateY(16px);} to{opacity:1;transform:translateY(0);} }
+
+  .slideleft { animation: t-slideleft .35s cubic-bezier(.16,1,.3,1); }
+  @keyframes t-slideleft { from{opacity:0;transform:translateX(40px);} to{opacity:1;transform:translateX(0);} }
+
+  .slideright{ animation: t-slideright .35s cubic-bezier(.16,1,.3,1); }
+  @keyframes t-slideright { from{opacity:0;transform:translateX(-40px);} to{opacity:1;transform:translateX(0);} }
+
+  .zoom      { animation: t-zoom .35s ease; }
+  @keyframes t-zoom { from{opacity:0;transform:scale(.92);} to{opacity:1;transform:scale(1);} }
+
+  .pop       { animation: t-pop .4s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes t-pop { from{opacity:0;transform:scale(.8);} to{opacity:1;transform:scale(1);} }
+
+  .flip      { animation: t-flip .5s ease; }
+  @keyframes t-flip { from{opacity:0;transform:perspective(800px) rotateY(20deg);} to{opacity:1;transform:perspective(800px) rotateY(0);} }
+
+  .blur      { animation: t-blur .4s ease; }
+  @keyframes t-blur { from{opacity:0;filter:blur(8px);} to{opacity:1;filter:blur(0);} }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>อนิเมชันเปลี่ยนหน้า 8 แบบ</h1>
+    <p>เลือกแบบด้านบน แล้วกดแท็บล่างเพื่อดูตอนสลับหน้า</p>
+  </div>
+
+  <div class="picker" id="picker"></div>
+
+  <div class="phone">
+    <div class="screen">
+      <div class="content" id="content"></div>
+      <div class="tabs" id="tabs"></div>
+    </div>
+  </div>
+
+<script>
+  const anims = [
+    ['1 · Fade', 'fade', 'จางเข้า'],
+    ['2 · Fade Up', 'fadeup', 'จาง+เลื่อนขึ้น'],
+    ['3 · Slide Left', 'slideleft', 'เลื่อนจากขวา'],
+    ['4 · Slide Right', 'slideright', 'เลื่อนจากซ้าย'],
+    ['5 · Zoom', 'zoom', 'ขยายเข้า'],
+    ['6 · Pop', 'pop', 'เด้งเข้า'],
+    ['7 · Flip', 'flip', 'พลิก 3 มิติ'],
+    ['8 · Blur', 'blur', 'เบลอเข้าโฟกัส'],
+  ];
+  const pages = [
+    { name:'หน้าหลัก', body:['🎁 รางวัลแลกได้เลย','⭐ แต้มคงเหลือ 3,559'] },
+    { name:'ประกาศ', body:['📢 แจ้งข่าวสาร HR','📄 เอกสารแนบ'] },
+    { name:'ประวัติ', body:['📜 รายการที่แลก','✅ อนุมัติแล้ว'] },
+  ];
+  let anim = 'fade', page = 0;
+
+  const picker = document.getElementById('picker');
+  const tabs = document.getElementById('tabs');
+  const content = document.getElementById('content');
+
+  function render() {
+    content.className = 'content ' + anim;
+    void content.offsetWidth;
+    content.innerHTML = '<h2>' + pages[page].name + '</h2>' +
+      pages[page].body.map(b => '<div class="card">' + b + '</div>').join('');
+    [...tabs.children].forEach((t,i)=> t.className = 'tab' + (i===page?' active':''));
+  }
+
+  anims.forEach(([label, cls, desc]) => {
+    const b = document.createElement('button');
+    b.className = 'pick' + (cls===anim?' active':'');
+    b.innerHTML = label + '<small>' + desc + '</small>';
+    b.onclick = () => { anim = cls; [...picker.children].forEach(x=>x.classList.remove('active')); b.classList.add('active'); render(); };
+    picker.appendChild(b);
+  });
+
+  pages.forEach((p,i) => {
+    const t = document.createElement('div');
+    t.className = 'tab';
+    t.textContent = p.name;
+    t.onclick = () => { page = i; render(); };
+    tabs.appendChild(t);
+  });
+
+  render();
+</script>
+</body>
+</html>

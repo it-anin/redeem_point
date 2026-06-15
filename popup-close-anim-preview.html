@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>อนิเมชันปิด popup — เลือกแบบ</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Itim&family=Nunito:wght@400;700;800&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Nunito', sans-serif; background: #FFF3EC; color: #3A2A20; padding: 36px 20px 70px; }
+  .head { text-align: center; margin-bottom: 28px; }
+  .head h1 { font-size: 22px; }
+  .head p { color: #A98571; margin-top: 6px; font-size: 14px; }
+
+  .grid { max-width: 720px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+  .demo-btn { background: #FBD3B9; color: #A85A2E; border: 1.5px solid #F6D8C5; border-radius: 14px; font-weight: 800; font-size: 14px; padding: 16px 10px; cursor: pointer; font-family: 'Nunito', sans-serif; }
+  .demo-btn small { display: block; font-weight: 600; font-size: 11px; color: #A98571; margin-top: 4px; }
+
+  .overlay { position: fixed; inset: 0; background: rgba(46,31,14,0.35); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; animation: fade 0.2s ease; }
+  .overlay.show { display: flex; }
+  .overlay.closing { animation: fadeout 0.3s ease forwards; }
+  .modal { background: #fff; border: 2px solid #F6D8C5; border-radius: 24px; padding: 28px; max-width: 320px; width: 100%; text-align: center; animation: jellyin 0.5s; }
+  .modal .emoji { font-size: 48px; margin-bottom: 10px; }
+  .modal .title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+  .modal .sub { font-size: 13px; color: #A98571; margin-bottom: 18px; font-family: 'Itim', sans-serif; }
+  .modal button { width: 100%; padding: 11px; border: 1.5px solid #F6D8C5; border-radius: 14px; background: #FBD3B9; color: #A85A2E; font-weight: 700; cursor: pointer; font-family: 'Nunito'; }
+
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fadeout { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes jellyin { 0%{opacity:0;transform:scale(0.5);} 40%{opacity:1;transform:scale(1.1,0.9);} 60%{transform:scale(0.95,1.05);} 100%{transform:scale(1);} }
+
+  /* exit animations (เล่นที่ .modal ตอนปิด) */
+  .out-scale  { animation: o-scale 0.28s ease forwards; }
+  @keyframes o-scale { from{opacity:1;transform:scale(1);} to{opacity:0;transform:scale(0.8);} }
+  .out-fade   { animation: o-fade 0.3s ease forwards; }
+  @keyframes o-fade { from{opacity:1;} to{opacity:0;} }
+  .out-zoom   { animation: o-zoom 0.3s ease forwards; }
+  @keyframes o-zoom { from{opacity:1;transform:scale(1);} to{opacity:0;transform:scale(0.2);} }
+  .out-down   { animation: o-down 0.35s cubic-bezier(0.5,0,0.75,0) forwards; }
+  @keyframes o-down { from{opacity:1;transform:translateY(0);} to{opacity:0;transform:translateY(120px);} }
+  .out-up     { animation: o-up 0.35s cubic-bezier(0.5,0,0.75,0) forwards; }
+  @keyframes o-up { from{opacity:1;transform:translateY(0);} to{opacity:0;transform:translateY(-120px);} }
+  .out-flip   { animation: o-flip 0.45s ease forwards; }
+  @keyframes o-flip { from{opacity:1;transform:perspective(600px) rotateX(0);} to{opacity:0;transform:perspective(600px) rotateX(90deg);} }
+  .out-bounce { animation: o-bounce 0.5s forwards; }
+  @keyframes o-bounce { 0%{transform:translateY(0);} 30%{transform:translateY(12px);} 100%{opacity:0;transform:translateY(-220px);} }
+  .out-jelly  { animation: o-jelly 0.5s forwards; }
+  @keyframes o-jelly { 0%{transform:scale(1);} 30%{transform:scale(1.08,0.92);} 60%{transform:scale(0.9,1.1);} 100%{opacity:0;transform:scale(0.3);} }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>อนิเมชันปิด popup 8 แบบ</h1>
+    <p>กดปุ่ม → popup เด้งขึ้น (jelly) → กด "ปิด" เพื่อดูอนิเมชันออก</p>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="overlay" id="overlay">
+    <div class="modal" id="modal" onclick="event.stopPropagation()">
+      <div class="emoji">⭐</div>
+      <div class="title">แต้มที่ได้รับเดือนนี้</div>
+      <div class="sub" id="curname">—</div>
+      <button onclick="closeIt()">ปิด</button>
+    </div>
+  </div>
+
+<script>
+  const anims = [
+    ['1 · Scale out', 'out-scale'],
+    ['2 · Fade out', 'out-fade'],
+    ['3 · Zoom out', 'out-zoom'],
+    ['4 · Slide Down', 'out-down'],
+    ['5 · Slide Up', 'out-up'],
+    ['6 · Flip out', 'out-flip'],
+    ['7 · Bounce out', 'out-bounce'],
+    ['8 · Jelly out', 'out-jelly'],
+  ];
+  const grid = document.getElementById('grid');
+  const overlay = document.getElementById('overlay');
+  const modal = document.getElementById('modal');
+  const curname = document.getElementById('curname');
+  let current = 'out-scale';
+
+  anims.forEach(([label, cls]) => {
+    const b = document.createElement('button');
+    b.className = 'demo-btn';
+    b.innerHTML = label.split(' · ')[0] + '<small>' + label.split(' · ')[1] + '</small>';
+    b.onclick = () => {
+      current = cls;
+      modal.className = 'modal';     // reset → เล่น jelly เข้า
+      overlay.className = 'overlay show';
+      curname.textContent = label.split(' · ')[1];
+      void modal.offsetWidth;
+    };
+    grid.appendChild(b);
+  });
+
+  function closeIt() {
+    modal.classList.add(current);
+    overlay.classList.add('closing');
+    setTimeout(() => { overlay.className = 'overlay'; modal.className = 'modal'; }, 380);
+  }
+  overlay.onclick = closeIt;
+</script>
+</body>
+</html>

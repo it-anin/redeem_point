@@ -1,0 +1,248 @@
+import { useState, useEffect, useRef } from 'react'
+import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore'
+import { db } from '../firebase'
+
+const EMPTY = { name: '', description: '', pointCost: '', stock: '', type: 'normal', image: '', unlimited: false, requireProof: false }
+
+// ไอคอนตามประเภทรางวัล (ใช้แสดงเมื่อไม่มีรูป)
+const typeEmoji = (type) => (type === 'special' ? '🌟' : '🎁')
+
+// แปลงลิงก์แชร์ Google Drive ให้เป็นลิงก์ฝังรูปได้โดยตรง (ลิงก์เว็บอื่นใช้ตามเดิม)
+function toDirectImageUrl(url) {
+  const u = (url ?? '').trim()
+  if (!u) return null
+  const m = u.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || u.match(/[?&]id=([a-zA-Z0-9_-]+)/)
+  return m ? `https://drive.google.com/thumbnail?id=${m[1]}&sz=w1000` : u
+}
+
+export default function AdminRewards() {
+  const [rewards, setRewards] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState(null) // reward being edited
+  const [form, setForm] = useState(EMPTY)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState({ type: '', text: '' })
+  const formRef = useRef(null)
+
+  const scrollToForm = () => {
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
+  useEffect(() => { fetchRewards() }, [])
+
+  const fetchRewards = async () => {
+    const snap = await getDocs(collection(db, 'rewards'))
+    setRewards(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    setLoading(false)
+  }
+
+  const openAdd = () => { setEditing(null); setForm(EMPTY); setShowForm(true); scrollToForm() }
+  const openEdit = (r) => { setEditing(r); setForm({ name: r.name, description: r.description ?? '', pointCost: r.pointCost, stock: r.stock ?? '', type: r.type ?? 'normal', image: r.image ?? '', unlimited: r.unlimited ?? false, requireProof: r.requireProof ?? false }); setShowForm(true); scrollToForm() }
+
+  const handleSave = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setMsg({ type: '', text: '' })
+    try {
+      const imageUrl = toDirectImageUrl(form.image)
+      const data = {
+        name: form.name,
+        description: form.description,
+        pointCost: Number(form.pointCost),
+        stock: form.unlimited ? null : Number(form.stock),
+        unlimited: !!form.unlimited,
+        requireProof: !!form.requireProof,
+        type: form.type,
+        emoji: typeEmoji(form.type), // ตั้งไอคอนอัตโนมัติตามประเภท
+        image: imageUrl,
+        updatedAt: new Date(),
+      }
+      if (editing) {
+        await updateDoc(doc(db, 'rewards', editing.id), data)
+        setMsg({ type: 'success', text: `แก้ไข "${form.name}" สำเร็จ!` })
+      } else {
+        await addDoc(collection(db, 'rewards'), { ...data, createdAt: new Date() })
+        setMsg({ type: 'success', text: `เพิ่มรางวัล "${form.name}" สำเร็จ!` })
+      }
+      setShowForm(false)
+      fetchRewards()
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (r) => {
+    if (!window.confirm(`ลบรางวัล "${r.name}" ใช่ไหม?`)) return
+    await deleteDoc(doc(db, 'rewards', r.id))
+    setMsg({ type: 'success', text: `ลบ "${r.name}" แล้ว` })
+    fetchRewards()
+  }
+
+  const specialRewards = rewards.filter(r => r.type === 'special')
+  const normalRewards  = rewards.filter(r => r.type !== 'special')
+
+  const renderCard = (r) => (
+    <div key={r.id} className="card" style={{ textAlign: 'center', position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 12, right: 12 }}>
+        {r.unlimited ? (
+          <span className="badge" style={{ background: '#fff', color: 'var(--primary-dark)', border: '1px solid var(--border)' }}>♾️ ไม่จำกัด</span>
+        ) : r.stock === 0 ? (
+          <span className="badge badge-danger">หมดแล้ว</span>
+        ) : (
+          <span className="badge" style={{ background: '#fff', color: r.stock <= 3 ? '#991B1B' : 'var(--primary-dark)', border: '1px solid var(--border)' }}>เหลือ {r.stock}</span>
+        )}
+      </div>
+      <div style={{ width: '100%', height: 140, borderRadius: 14, background: 'var(--bg)', border: '1.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 56, marginBottom: 12, overflow: 'hidden' }}>
+        {r.image
+          ? <img src={r.image} alt={r.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : (r.emoji ?? '🎁')}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{r.name}</div>
+      <div style={{ marginBottom: 8 }}>
+        {r.type === 'special' ? (
+          <span className="badge badge-warn badge-pulse">🌟 รางวัลพิเศษ</span>
+        ) : (
+          <span className="badge" style={{ background: '#fff', color: 'var(--primary-dark)', border: '1px solid var(--border)' }}>🎁 รางวัลปกติ</span>
+        )}
+      </div>
+      {r.description && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>{r.description}</div>}
+      <div className="cost-pill" style={{ marginBottom: 14 }}>⭐ {r.pointCost?.toLocaleString()} แต้ม</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn-primary" style={{ flex: 1, padding: '8px', fontSize: 13 }} onClick={() => openEdit(r)}>✏️ แก้ไข</button>
+        <button className="btn-danger" style={{ flex: 1 }} onClick={() => handleDelete(r)}>🗑️ ลบ</button>
+      </div>
+    </div>
+  )
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <div className="page-title">🎁 จัดการรางวัล</div>
+          <div className="page-sub">เพิ่ม แก้ไข และลบรางวัลในระบบ</div>
+        </div>
+        <button className="btn-primary" onClick={openAdd}>+ เพิ่มรางวัล</button>
+      </div>
+
+      {msg.text && (
+        <div style={{ background: msg.type === 'success' ? '#D1FAE5' : '#FEE2E2', color: msg.type === 'success' ? '#065F46' : '#991B1B', padding: '12px 18px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontWeight: 700 }}>
+          {msg.type === 'success' ? '✅' : '⚠️'} {msg.text}
+        </div>
+      )}
+
+      {/* Form */}
+      {showForm && (
+        <div ref={formRef} className="card" style={{ marginBottom: 24, scrollMarginTop: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 16 }}>
+            {editing ? '✏️ แก้ไขรางวัล' : '➕ เพิ่มรางวัลใหม่'}
+          </div>
+          <form onSubmit={handleSave}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>ชื่อรางวัล *</label>
+                <input className="input" required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="กาแฟบัตร 100 บาท" />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>ประเภทรางวัล</label>
+                <select className="input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+                  <option value="normal">🎁 รางวัลปกติ</option>
+                  <option value="special">🌟 รางวัลพิเศษ</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>แต้มที่ใช้แลก *</label>
+                <input className="input" type="number" min={1} required value={form.pointCost} onChange={e => setForm(f => ({ ...f, pointCost: e.target.value }))} placeholder="500" />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>จำนวนในคลัง {form.unlimited ? '' : '*'}</label>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  required={!form.unlimited}
+                  disabled={form.unlimited}
+                  value={form.unlimited ? '' : form.stock}
+                  onChange={e => setForm(f => ({ ...f, stock: e.target.value }))}
+                  placeholder={form.unlimited ? 'ไม่จำกัด' : '10'}
+                  style={form.unlimited ? { background: 'var(--bg)', color: 'var(--text-muted)' } : undefined}
+                />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginTop: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={form.unlimited} onChange={e => setForm(f => ({ ...f, unlimited: e.target.checked }))} />
+                  ♾️ ไม่จำกัดจำนวน (แลกได้ไม่จำกัด)
+                </label>
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>รายละเอียด</label>
+                <input className="input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="รายละเอียดรางวัล..." />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={form.requireProof} onChange={e => setForm(f => ({ ...f, requireProof: e.target.checked }))} />
+                  📎 ต้องแนบรูปหลักฐานตอนแลก (เช่น ใบเสร็จ)
+                </label>
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>ลิงก์รูปภาพ (URL, ไม่บังคับ)</label>
+                <input
+                  className="input"
+                  type="url"
+                  value={form.image}
+                  onChange={e => setForm(f => ({ ...f, image: e.target.value }))}
+                  placeholder="วางลิงก์รูป เช่น https://i.ibb.co/xxxx/reward.png"
+                />
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                  💡 ใช้ลิงก์ direct จากเว็บฝากรูปใดก็ได้ (ImgBB, Cloudinary, Imgur ฯลฯ) — ถ้าวางลิงก์แชร์ Google Drive ระบบจะแปลงให้อัตโนมัติ
+                </div>
+                {toDirectImageUrl(form.image) && (
+                  <img
+                    src={toDirectImageUrl(form.image)}
+                    alt="ตัวอย่าง"
+                    style={{ marginTop: 10, width: 72, height: 72, objectFit: 'cover', borderRadius: 12, border: '1.5px solid var(--border)' }}
+                    onError={e => { e.currentTarget.style.display = 'none' }}
+                    onLoad={e => { e.currentTarget.style.display = 'block' }}
+                  />
+                )}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" className="btn-danger" onClick={() => setShowForm(false)}>ยกเลิก</button>
+              <button type="submit" className="btn-primary" disabled={saving} style={{ padding: '11px 28px' }}>
+                {saving ? 'กำลังบันทึก...' : '💾 บันทึก'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Rewards grid */}
+      {loading ? (
+        <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>กำลังโหลด...</div>
+      ) : (
+        <>
+          {specialRewards.length > 0 && (
+            <div style={{ marginBottom: 28 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 14 }}>🌟 รางวัลพิเศษ</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+                {specialRewards.map(renderCard)}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 14 }}>🎁 รางวัลปกติ</div>
+            {normalRewards.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>ยังไม่มีรางวัล</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+                {normalRewards.map(renderCard)}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </>
+  )
+}

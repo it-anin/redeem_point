@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: เป็น admin ไหม (employees doc id = อีเมล ของผู้ใช้ และ role == 'admin')
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/employees/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/employees/$(request.auth.token.email)).data.role == 'admin';
+    }
+
+    // พนักงานที่ admin สร้างไว้รอผูกบัญชี (doc id = รหัสพนักงาน)
+    function pending(code) {
+      return get(/databases/$(database)/documents/pendingEmployees/$(code)).data;
+    }
+
+    // พนักงานที่เข้าระบบแล้ว (doc id = อีเมล Google)
+    match /employees/{email} {
+      allow read: if request.auth != null && (email == request.auth.token.email || isAdmin());
+
+      // ผูกบัญชีครั้งแรก: ผู้ใช้สร้าง doc ของตัวเอง โดยดึงข้อมูล (สิทธิ์/แต้ม) จาก pendingEmployees
+      allow create: if isAdmin()
+        || (request.auth != null
+            && email == request.auth.token.email
+            && request.resource.data.email == request.auth.token.email
+            && exists(/databases/$(database)/documents/pendingEmployees/$(request.resource.data.code))
+            && request.resource.data.role == pending(request.resource.data.code).role
+            && request.resource.data.points == pending(request.resource.data.code).points);
+
+      // admin แก้ได้ทุกอย่าง / พนักงานลดแต้มตัวเองได้เท่านั้น (ตอนแลกรางวัล)
+      allow update: if isAdmin()
+        || (request.auth != null
+            && email == request.auth.token.email
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points'])
+            && request.resource.data.points <= resource.data.points
+            && request.resource.data.points >= 0);
+      allow delete: if isAdmin();
+    }
+
+    // พนักงานรอผูกบัญชี (doc id = รหัสพนักงาน)
+    match /pendingEmployees/{code} {
+      allow read: if request.auth != null;
+      allow create, update: if isAdmin();
+      // ลบได้: admin หรือผู้ใช้ที่เพิ่งผูกบัญชีด้วยรหัสนี้ (employees doc ของตัวเองมี code ตรงกัน)
+      allow delete: if isAdmin()
+        || (request.auth != null
+            && exists(/databases/$(database)/documents/employees/$(request.auth.token.email))
+            && get(/databases/$(database)/documents/employees/$(request.auth.token.email)).data.code == code);
+    }
+
+    // รางวัล: อ่านได้ทุกคน, สร้าง/ลบเฉพาะ admin, ลดสต็อกทีละ 1 ได้ตอนแลก
+    match /rewards/{rewardId} {
+      allow read: if request.auth != null;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (request.auth != null
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
+            && resource.data.stock > 0
+            && request.resource.data.stock == resource.data.stock - 1);
+    }
+
+    // ประกาศ: อ่านได้ทุกคน (ล็อกอินแล้ว), เขียนได้เฉพาะ admin
+    match /announcements/{annId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // ประวัติ: อ่าน/สร้างได้ทุกคน (ล็อกอินแล้ว), แก้/ลบเฉพาะ admin
+    match /transactions/{txId} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if isAdmin();
+    }
+
+    // บันทึกการแก้ไข (audit log): admin อ่าน/สร้างได้ แก้/ลบไม่ได้ (เก็บถาวร)
+    match /auditLogs/{logId} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false;
+    }
+  }
+}

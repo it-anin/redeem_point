@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>อนิเมชัน popup — เลือกแบบ</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Itim&family=Nunito:wght@400;700;800&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Nunito', sans-serif;
+    background: #FFF3EC; color: #3A2A20;
+    padding: 36px 20px 70px;
+  }
+  .head { text-align: center; margin-bottom: 28px; }
+  .head h1 { font-size: 22px; }
+  .head p { color: #A98571; margin-top: 6px; font-size: 14px; }
+
+  .grid {
+    max-width: 720px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px;
+  }
+  .demo-btn {
+    background: #FBD3B9; color: #A85A2E; border: 1.5px solid #F6D8C5;
+    border-radius: 14px; font-weight: 800; font-size: 14px;
+    padding: 16px 10px; cursor: pointer; font-family: 'Nunito', sans-serif;
+  }
+  .demo-btn small { display: block; font-weight: 600; font-size: 11px; color: #A98571; margin-top: 4px; }
+
+  /* overlay + card */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(46,31,14,0.35);
+    display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+    animation: fade 0.2s ease;
+  }
+  .overlay.show { display: flex; }
+  .modal {
+    background: #fff; border: 2px solid #F6D8C5; border-radius: 24px;
+    padding: 28px; max-width: 320px; width: 100%; text-align: center;
+  }
+  .modal .emoji { font-size: 48px; margin-bottom: 10px; }
+  .modal .title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+  .modal .sub { font-size: 13px; color: #A98571; margin-bottom: 18px; font-family: 'Itim', sans-serif; }
+  .modal button {
+    width: 100%; padding: 11px; border: 1.5px solid #F6D8C5; border-radius: 14px;
+    background: #FBD3B9; color: #A85A2E; font-weight: 700; cursor: pointer; font-family: 'Nunito';
+  }
+
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+  /* 1 Pop */
+  .a-pop    { animation: pop 0.3s cubic-bezier(0.34,1.56,0.64,1); }
+  @keyframes pop { from { opacity:0; transform: scale(0.85) translateY(12px); } to { opacity:1; transform: scale(1) translateY(0); } }
+  /* 2 Fade */
+  .a-fade   { animation: mfade 0.35s ease; }
+  @keyframes mfade { from { opacity:0; } to { opacity:1; } }
+  /* 3 Zoom */
+  .a-zoom   { animation: zoom 0.3s ease-out; }
+  @keyframes zoom { from { opacity:0; transform: scale(0.3); } to { opacity:1; transform: scale(1); } }
+  /* 4 Slide Up */
+  .a-up     { animation: up 0.35s cubic-bezier(0.16,1,0.3,1); }
+  @keyframes up { from { opacity:0; transform: translateY(80px); } to { opacity:1; transform: translateY(0); } }
+  /* 5 Slide Down */
+  .a-down   { animation: down 0.35s cubic-bezier(0.16,1,0.3,1); }
+  @keyframes down { from { opacity:0; transform: translateY(-80px); } to { opacity:1; transform: translateY(0); } }
+  /* 6 Flip */
+  .a-flip   { animation: flip 0.5s ease; transform-style: preserve-3d; }
+  @keyframes flip { from { opacity:0; transform: perspective(600px) rotateX(-90deg); } to { opacity:1; transform: perspective(600px) rotateX(0); } }
+  /* 7 Bounce */
+  .a-bounce { animation: bounce 0.6s; }
+  @keyframes bounce {
+    0% { opacity:0; transform: translateY(-200px); }
+    60% { opacity:1; transform: translateY(15px); }
+    80% { transform: translateY(-8px); }
+    100% { transform: translateY(0); }
+  }
+  /* 8 Jelly */
+  .a-jelly  { animation: jelly 0.6s; }
+  @keyframes jelly {
+    0% { opacity:0; transform: scale(0.5); }
+    40% { opacity:1; transform: scale(1.1, 0.9); }
+    60% { transform: scale(0.95, 1.05); }
+    80% { transform: scale(1.02, 0.98); }
+    100% { transform: scale(1); }
+  }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>อนิเมชัน popup 8 แบบ</h1>
+    <p>กดปุ่มเพื่อดูแต่ละแบบ — ชอบแบบไหนบอกชื่อได้เลย</p>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="overlay" id="overlay" onclick="this.classList.remove('show')">
+    <div class="modal" id="modal" onclick="event.stopPropagation()">
+      <div class="emoji">⭐</div>
+      <div class="title">แต้มที่ได้รับเดือนนี้</div>
+      <div class="sub">ตัวอย่าง popup อนิเมชัน</div>
+      <button onclick="document.getElementById('overlay').classList.remove('show')">ปิด</button>
+    </div>
+  </div>
+
+<script>
+  const anims = [
+    ['1 · Pop / เด้ง', 'a-pop'],
+    ['2 · Fade', 'a-fade'],
+    ['3 · Zoom', 'a-zoom'],
+    ['4 · Slide Up', 'a-up'],
+    ['5 · Slide Down', 'a-down'],
+    ['6 · Flip', 'a-flip'],
+    ['7 · Bounce', 'a-bounce'],
+    ['8 · Jelly', 'a-jelly'],
+  ];
+  const grid = document.getElementById('grid');
+  const overlay = document.getElementById('overlay');
+  const modal = document.getElementById('modal');
+
+  anims.forEach(([label, cls]) => {
+    const b = document.createElement('button');
+    b.className = 'demo-btn';
+    b.innerHTML = label.split(' · ')[0] + '<small>' + label.split(' · ')[1] + '</small>';
+    b.onclick = () => {
+      modal.className = 'modal';        // reset
+      void modal.offsetWidth;           // reflow เพื่อให้ animation เล่นซ้ำ
+      modal.classList.add(cls);
+      overlay.classList.add('show');
+    };
+    grid.appendChild(b);
+  });
+</script>
+</body>
+</html>
