@@ -171,18 +171,26 @@ export default function AdminHistory() {
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>ยังไม่มีบันทึก</div>
           ) : (
             <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-              {logs.map(l => (
+              {logs.map(l => {
+                const isReset = l.action === 'reset_points'
+                const actionLabel = isReset ? 'รีเซ็ตแต้ม' : l.action
+                const badgeClass = (l.action === 'ลบ' || isReset) ? 'badge-danger' : 'badge-warn'
+                const title = isReset
+                  ? '♻️ รีเซ็ตแต้มทั้งระบบ'
+                  : `${l.employeeName} · 🎁 ${l.rewardName}`
+                return (
                 <div key={l.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 18px', borderBottom: '1px solid var(--border)' }}>
-                  <span className={`badge ${l.action === 'ลบ' ? 'badge-danger' : 'badge-warn'}`} style={{ flexShrink: 0 }}>{l.action}</span>
+                  <span className={`badge ${badgeClass}`} style={{ flexShrink: 0 }}>{actionLabel}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{l.employeeName} · 🎁 {l.rewardName}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{title}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{l.detail}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                       โดย {l.by} · {l.at?.toDate?.()?.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) ?? ''}
                     </div>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

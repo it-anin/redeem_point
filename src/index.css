@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Itim&family=Nunito:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Itim&family=Nunito:wght@400;500;600;700;800&family=Sarabun:wght@400;500;600;700;800&display=swap');
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -23,7 +23,7 @@ button:focus, a:focus, button:focus-visible, a:focus-visible {
   --danger: #E05252;
   --radius: 24px;
   --radius-sm: 14px;
-  --sidebar-w: 240px;
+  --sidebar-w: 320px;
 }
 
 body {
@@ -32,6 +32,19 @@ body {
   color: var(--text);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ── ฟอนต์เนื้อหาหน้า admin (desktop) = Sarabun แยกจากฝั่งพนักงาน ──
+   พนักงาน/preview มี .layout--mobile จึงไม่โดน → ยังเป็น Nunito/Itim เหมือนเดิม
+   ครอบ element ปุ่ม/ฟอร์ม/ตารางด้วย เพราะ .btn-primary/.input ตั้ง Nunito ไว้ตรงๆ
+   (sidebar ยังเป็น Itim ตามเดิม เพราะ match .sidebar โดยตรง) */
+.layout:not(.layout--mobile) .main,
+.layout:not(.layout--mobile) .main button,
+.layout:not(.layout--mobile) .main input,
+.layout:not(.layout--mobile) .main select,
+.layout:not(.layout--mobile) .main textarea,
+.layout:not(.layout--mobile) .main table {
+  font-family: 'Sarabun', sans-serif;
 }
 
 /* ── Layout ── */
@@ -44,7 +57,7 @@ body {
 .sidebar {
   width: var(--sidebar-w);
   background: var(--surface);
-  font-family: 'Itim', sans-serif;
+  font-family: 'Sarabun', sans-serif; /* admin sidebar = Sarabun (drawer ฝั่งพนักงานยังเป็น Itim) */
   border-right: 2px solid var(--border);
   padding: 28px 20px;
   display: flex;
@@ -557,6 +570,10 @@ tr:hover td { background: var(--bg); }
   font-size: 18px;
   color: var(--text-muted);
 }
+/* speech-bubble ใน sidebar ฝั่ง admin = Sarabun (drawer พนักงานยังเป็น Itim) */
+.sidebar .speech-bubble {
+  font-family: 'Sarabun', sans-serif;
+}
 .speech-bubble::before {
   content: '';
   position: absolute;
@@ -631,6 +648,18 @@ tr:hover td { background: var(--bg); }
 .modal-slideup, .modal-slideup-out { border-width: 4px; }
 @keyframes modal-slideup { from { opacity: 0; transform: translateY(80px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes modal-slideup-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-80px); } }
+
+/* Slide down เข้า/ออก (ฟอร์มเพิ่มประกาศ) */
+.slidedown-in { animation: slidedown-in 0.5s cubic-bezier(0.16, 1, 0.3, 1); transform-origin: top center; }
+.slidedown-out { animation: slidedown-out 0.28s ease forwards; transform-origin: top center; }
+@keyframes slidedown-in {
+  from { opacity: 0; transform: translateY(-30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slidedown-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-30px); }
+}
 
 /* ── นีออนเรืองขอบ ── */
 .neon-glow {

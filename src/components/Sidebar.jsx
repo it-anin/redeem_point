@@ -78,31 +78,13 @@ function SidebarContent({ onClose, compact }) {
 
   return (
     <>
-      <div className="sidebar-logo">
-        <div className="sidebar-logo-icon">🥚</div>
-        <div className="speech-bubble" style={{ marginLeft: 6 }}>
-          <div className="sidebar-logo-name">Cream Rewards</div>
-          <div className="sidebar-logo-sub">ระบบสะสมแต้ม</div>
+      <div className="sidebar-logo" style={{ justifyContent: 'flex-end' }}>
+        <div className="sidebar-logo-icon" style={{ background: 'none', border: 'none' }}><img src="/iconadmin.png" alt="" style={{ width: 100, height: 100, objectFit: 'contain' }} /></div>
+        <div className="speech-bubble" style={{ marginLeft: 20 }}>
+          <div className="sidebar-logo-name">Admin</div>
+          <div className="sidebar-logo-sub">จัดการแต้มและของรางวัล</div>
         </div>
       </div>
-
-      {profile && (
-        <div style={{ padding: '12px', background: 'var(--bg)', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--border)', marginBottom: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div className="avatar">{profile.name?.[0] ?? '?'}</div>
-            <div>
-              <div style={{ fontSize: '13px', fontWeight: 700 }}>{profile.name}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{profile.department}</div>
-            </div>
-          </div>
-          {!isAdmin && (
-            <div style={{ marginTop: '10px', background: 'var(--primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '8px 12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--primary-dark)' }}>{profile.points?.toLocaleString() ?? 0}</div>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>แต้มสะสม</div>
-            </div>
-          )}
-        </div>
-      )}
 
       {isAdmin ? (
         <>

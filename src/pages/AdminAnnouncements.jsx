@@ -10,12 +10,21 @@ export default function AdminAnnouncements() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [formClosing, setFormClosing] = useState(false)
   const [form, setForm] = useState(EMPTY)
   const [pdfFile, setPdfFile] = useState(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
 
   useEffect(() => { fetchItems() }, [])
+
+  const openForm = () => { setForm(EMPTY); setFormClosing(false); setShowForm(true) }
+  // ปิดแบบหน่วง unmount ให้อนิเมชัน bounce-out เล่นจบก่อน (ตรงกับ 0.4s ใน CSS)
+  const closeForm = () => {
+    setFormClosing(true)
+    setTimeout(() => { setShowForm(false); setFormClosing(false); setPdfFile(null) }, 280)
+  }
+  const toggleForm = () => { showForm ? closeForm() : openForm() }
 
   const fetchItems = async () => {
     const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'))
@@ -48,8 +57,7 @@ export default function AdminAnnouncements() {
       })
       setMsg({ type: 'success', text: `โพสต์ประกาศ "${form.title}" สำเร็จ!` })
       setForm(EMPTY)
-      setPdfFile(null)
-      setShowForm(false)
+      closeForm()
       fetchItems()
     } catch (err) {
       setMsg({ type: 'error', text: err.message })
@@ -72,8 +80,8 @@ export default function AdminAnnouncements() {
           <div className="page-title">📢 จัดการประกาศ</div>
           <div className="page-sub">โพสต์และลบประกาศที่พนักงานจะเห็น</div>
         </div>
-        <button className="btn-primary" onClick={() => { setForm(EMPTY); setShowForm(v => !v) }}>
-          {showForm ? '✕ ปิด' : '+ เพิ่มประกาศ'}
+        <button className="btn-primary" onClick={toggleForm}>
+          {showForm && !formClosing ? '✕ ปิด' : '+ เพิ่มประกาศ'}
         </button>
       </div>
 
@@ -85,7 +93,7 @@ export default function AdminAnnouncements() {
 
       {/* Form */}
       {showForm && (
-        <div className="card" style={{ marginBottom: 24 }}>
+        <div className={`card ${formClosing ? 'slidedown-out' : 'slidedown-in'}`} style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 16 }}>➕ เพิ่มประกาศใหม่</div>
           <form onSubmit={handleSave}>
             <div style={{ marginBottom: 12 }}>
@@ -110,7 +118,7 @@ export default function AdminAnnouncements() {
               {pdfFile && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>เลือกแล้ว: {pdfFile.name}</div>}
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" className="btn-danger" onClick={() => { setShowForm(false); setPdfFile(null) }}>ยกเลิก</button>
+              <button type="button" className="btn-danger" onClick={closeForm}>ยกเลิก</button>
               <button type="submit" className="btn-primary" disabled={saving} style={{ padding: '11px 28px' }}>
                 {saving ? 'กำลังโพสต์...' : '💾 โพสต์ประกาศ'}
               </button>

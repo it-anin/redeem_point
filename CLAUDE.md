@@ -82,6 +82,7 @@ src/
 - `patchProfile()` — อัปเดตแต้มในหน้าจอทันทีหลังแลก (ไม่ต้อง refresh)
 - **redirect หลัง login เป็นแบบ declarative** — `Login.jsx` ไม่เรียก `navigate()` เองหลัง popup (จะ race กับ `onAuthStateChanged` ที่ยัง `getDoc` profile ไม่เสร็จ → เด้งกลับ login ต้องกด 2 รอบ) แต่ใช้ `if (user) return <Navigate to="/" replace />` รอจน profile พร้อมแล้วค่อยพาเข้าหน้าหลัก
 - **หน้า login มีตัวการ์ตูนเคลื่อนไหว** `iconmove.webp` (พื้นหลังโปร่งใส 160×160px) แทน emoji เดิม
+- **ไม่มีปุ่ม "เข้าสู่ระบบด้วย Google" แล้ว** — กดที่ **รูป `loginmain.png`** (ครอบด้วย `<button>` เพื่อโฟกัส/กดด้วยคีย์บอร์ดได้) เพื่อเรียก `signInWithPopup`; ตอนกำลังโหลดรูปจางลง + ขึ้น "กำลังเข้าสู่ระบบ..."
 
 ---
 
@@ -157,9 +158,12 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 การ์ดสถิติ + รายการล่าสุด + อันดับแต้มสะสม (กรอง admin ออก) + สต็อกรางวัล
 
 ### AdminEmployees.jsx (จัดการพนักงาน)
-- เพิ่มพนักงานด้วย **รหัสพนักงาน** (ไม่ต้องรู้อีเมล) → สร้าง `pendingEmployees/{รหัส}`
-- ตารางรวม "เข้าระบบแล้ว" + "รอผูกบัญชี"
-- **เพิ่มแต้ม** (อย่างเดียว ไม่หัก) + **ลบพนักงาน**
+- เพิ่มพนักงานด้วย **รหัสพนักงาน** (ไม่ต้องรู้อีเมล) → สร้าง `pendingEmployees/{รหัส}`; ช่อง "แผนก" เป็น **dropdown** (optgroup ตาม `DEPT_GROUPS`)
+- ตารางรวม "เข้าระบบแล้ว" + "รอผูกบัญชี" — **แยกกลุ่มตามแผนก** (Sale / Warehouse / Office / อื่นๆ) มีแถวหัวกลุ่ม + จำนวนคน; เทียบแผนกแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ (`groupOfDept`)
+  - `DEPT_GROUPS` (module-level): **Sale** = Pharmarcist / Pharmarcist Assistant / Pharmarcist Mobile / Sale Admin · **Warehouse** = Outbound / Inbound / Inventory / Warehouse Manager / Packing · **Office** = IT Support / Accountant / Purchase / Procurement Manager / HR&Admin
+- ปุ่มเดียว **✏️ แก้ไข** → modal (slide down เปิด/ปิด) แก้ **ชื่อ/แผนก/สิทธิ์** + **ปรับแต้ม** (ใส่ − เพื่อหัก, บันทึกประวัติ `transactions`); พนักงานรอผูกบัญชีแก้ "แต้มเริ่มต้น" ตรงๆ + **ลบพนักงาน**
+- **♻️ รีเซ็ตแต้มทั้งระบบ** — ปุ่มสีแดง + modal ยืนยันต้องพิมพ์ `RESET` → ตั้ง `points: 0` ทุกคนใน `employees` + `pendingEmployees` (เขียนแบบ `writeBatch` ครั้งละ 400) เก็บประวัติ `transactions` ไว้ + บันทึก `auditLogs` (`action: reset_points`)
+- ช่องค้นหา + หัวตาราง (`thead`) พื้นหลังขาว (inline เฉพาะหน้านี้)
 
 ### AdminRewards.jsx (จัดการรางวัล)
 - เพิ่ม/แก้/ลบ รางวัล — ประเภท (ปกติ/พิเศษ), รูปจาก **URL** (รองรับแปลงลิงก์ Google Drive), ไม่จำกัดจำนวน, ต้องแนบหลักฐาน
@@ -175,7 +179,7 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 
 ### AdminHistory.jsx (ประวัติทั้งหมด)
 - ทุกธุรกรรม — **แก้ไข** (ปรับยอดพนักงานตามส่วนต่าง) / **ลบ** (คืนแต้ม+สต็อก)
-- ทุกการแก้/ลบบันทึกลง **auditLogs** (ดูได้ในปุ่ม "บันทึกการแก้ไข")
+- ทุกการแก้/ลบบันทึกลง **auditLogs** (ดูได้ในปุ่ม "บันทึกการแก้ไข"); พาเนล log รองรับ `action: reset_points` (แสดง "♻️ รีเซ็ตแต้มทั้งระบบ" badge แดง)
 
 ### MobilePreview.jsx (พนักงาน (แสดงผล))
 แสดงหน้าพนักงานในกรอบมือถือ (iframe + `?preview=employee` บังคับ layout/เมนูแบบพนักงาน)
@@ -185,7 +189,9 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 ## ข้อตกลง UI / สไตล์ (index.css)
 
 - **ธีมสี Peach & Coral** — กำหนดที่ `:root` (`--bg`, `--primary`, `--primary-dark`, `--border` ฯลฯ) แก้ที่เดียวเปลี่ยนทั้งแอป
-- **ฟอนต์**: Nunito (หลัก) + **Itim** (กล่องคำพูด, sidebar/drawer, ข้อความน่ารัก) — import บรรทัดบนสุดของ index.css
+- **ฟอนต์**: Nunito (หลักฝั่งพนักงาน) + **Itim** (กล่องคำพูด, drawer พนักงาน, ข้อความน่ารัก) + **Sarabun** (หน้า admin) — import บรรทัดบนสุดของ index.css
+  - **หน้า admin ใช้ Sarabun** — scope ที่ `.layout:not(.layout--mobile) .main` (รวมปุ่ม/ฟอร์ม/ตาราง) และ `.sidebar` + `.sidebar .speech-bubble`; ฝั่งพนักงาน (มี `.layout--mobile`) ยังเป็น Nunito/Itim
+- **sidebar admin**: โลโก้ `iconadmin.png` (100×100, ชิดขวา) + speech bubble "Admin / จัดการแต้มและของรางวัล"; **ไม่มีการ์ด avatar**; กว้าง `--sidebar-w: 320px`
 - **`.speech-bubble`** — กล่องคำพูดพื้นขาว หางชี้ซ้าย ฟอนต์ Itim (ใช้ Dashboard/Announcements/History/Sidebar)
 - **`.card`, `.btn-primary`, `.badge`, `.cost-pill`, `.stat-card`** — คลาส utility ใช้ร่วมทุกหน้า (แก้คลาส = กระทบทุกที่; อยากแยกใช้ inline style)
 - **`forceMobile`** = ไม่ใช่ admin หรือ `?preview=employee` → บังคับ layout มือถือ
@@ -193,7 +199,7 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - ตัด tap-highlight สีฟ้าตอนแตะ + focus outline ออกแล้ว (`* { -webkit-tap-highlight-color: transparent }`)
 
 ### รูปภาพใน `public/` (อ้างด้วย path `/ชื่อไฟล์` — เปลี่ยนรูปทับชื่อเดิมได้โดยไม่ต้องแก้โค้ด + hard refresh)
-`icon.png` (โลโก้หัว Dashboard/topbar admin), `texttopbar.png` (แบนเนอร์ topbar พนักงาน), `Home.png` / `Megaphone.png` (ไอคอน bottom nav), `iconsleep.png` (โลโก้ drawer), `iconmegaphone.png` (หัวหน้าประกาศ), `iconcheck.png` (หัวหน้าประวัติ), `star-profile.png`, `iconmove.webp` (การ์ตูนเคลื่อนไหวหน้า login — สร้างจาก `iconmove.gif` ลบพื้นหลังด้วย flood fill จากขอบให้โปร่งใส)
+`icon.png` (โลโก้หัว Dashboard/topbar admin), `texttopbar.png` (แบนเนอร์ topbar พนักงาน), `Home.png` / `Megaphone.png` (ไอคอน bottom nav), `iconsleep.png` (โลโก้ drawer), `iconmegaphone.png` (หัวหน้าประกาศ), `iconcheck.png` (หัวหน้าประวัติ), `star-profile.png`, `iconadmin.png` (โลโก้ sidebar admin), `iconmove.webp` (การ์ตูนเคลื่อนไหวหน้า login — สร้างจาก `iconmove.gif` ลบพื้นหลังด้วย flood fill จากขอบให้โปร่งใส), `loginmain.png` (รูปกดเข้าสู่ระบบหน้า login)
 
 ### อนิเมชัน (index.css)
 - **`.special-card`** — การ์ดรางวัลพิเศษ แสงกวาดขอบ (conic-gradient + `@property --angle`)
@@ -203,6 +209,7 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
   - popup แต้มที่ได้รับ = jelly in / jelly out (`.modal-jelly` / `.modal-jelly-out`)
   - ยืนยันการแลก + แต้มไม่พอ = slide up in/out (`.modal-slideup` / `.modal-slideup-out`, ขอบหนา 4px)
   - overlay จางเข้า/ออก (`.modal-overlay` / `.overlay-out`)
+  - ฟอร์ม/โมดัลหน้า admin (เพิ่มประกาศ, เพิ่ม/แก้ไขพนักงาน) = **slide down** เข้า/ออก (`.slidedown-in` 0.5s / `.slidedown-out` 0.28s) + closing-state หน่วง 280ms
 - **เปลี่ยนหน้า (route transition)** — `.page-enter` (Slide Left) ที่ wrapper ของ `<Outlet>` ใน Layout โดยใส่ `key={location.pathname}` ให้ remount เล่นอนิเมชันใหม่; `.main` ตั้ง `overflow-x: clip` กันเนื้อหาสไลด์ล้น
 
 ### แจ้งเตือน / localStorage (ฝั่งพนักงาน)
