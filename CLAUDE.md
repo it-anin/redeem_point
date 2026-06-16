@@ -83,6 +83,7 @@ src/
 - **redirect หลัง login เป็นแบบ declarative** — `Login.jsx` ไม่เรียก `navigate()` เองหลัง popup (จะ race กับ `onAuthStateChanged` ที่ยัง `getDoc` profile ไม่เสร็จ → เด้งกลับ login ต้องกด 2 รอบ) แต่ใช้ `if (user) return <Navigate to="/" replace />` รอจน profile พร้อมแล้วค่อยพาเข้าหน้าหลัก
 - **หน้า login มีตัวการ์ตูนเคลื่อนไหว** `iconmove.webp` (พื้นหลังโปร่งใส 160×160px) แทน emoji เดิม
 - **ไม่มีปุ่ม "เข้าสู่ระบบด้วย Google" แล้ว** — กดที่ **รูป `loginmain.png`** (ครอบด้วย `<button>` เพื่อโฟกัส/กดด้วยคีย์บอร์ดได้) เพื่อเรียก `signInWithPopup`; ตอนกำลังโหลดรูปจางลง + ขึ้น "กำลังเข้าสู่ระบบ..."
+- **ขั้นผูกบัญชีครั้งแรก** — แทนหัวข้อ "ผูกบัญชีครั้งแรก" + คำแนะนำด้วยรูป `linkcard.png` (ยังคงบรรทัด "เข้าด้วย {อีเมล}" ไว้ใต้รูป)
 
 ---
 
@@ -199,7 +200,7 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - ตัด tap-highlight สีฟ้าตอนแตะ + focus outline ออกแล้ว (`* { -webkit-tap-highlight-color: transparent }`)
 
 ### รูปภาพใน `public/` (อ้างด้วย path `/ชื่อไฟล์` — เปลี่ยนรูปทับชื่อเดิมได้โดยไม่ต้องแก้โค้ด + hard refresh)
-`icon.png` (โลโก้หัว Dashboard/topbar admin), `texttopbar.png` (แบนเนอร์ topbar พนักงาน), `Home.png` / `Megaphone.png` (ไอคอน bottom nav), `iconsleep.png` (โลโก้ drawer), `iconmegaphone.png` (หัวหน้าประกาศ), `iconcheck.png` (หัวหน้าประวัติ), `star-profile.png`, `iconadmin.png` (โลโก้ sidebar admin), `iconmove.webp` (การ์ตูนเคลื่อนไหวหน้า login — สร้างจาก `iconmove.gif` ลบพื้นหลังด้วย flood fill จากขอบให้โปร่งใส), `loginmain.png` (รูปกดเข้าสู่ระบบหน้า login)
+`icon.png` (โลโก้หัว Dashboard/topbar admin), `texttopbar.png` (แบนเนอร์ topbar พนักงาน), `Home.png` / `Megaphone.png` (ไอคอน bottom nav), `iconsleep.png` (โลโก้ drawer), `iconmegaphone.png` (หัวหน้าประกาศ), `iconcheck.png` (หัวหน้าประวัติ), `star-profile.png`, `iconadmin.png` (โลโก้ sidebar admin), `iconmove.webp` (การ์ตูนเคลื่อนไหวหน้า login — สร้างจาก `iconmove.gif` ลบพื้นหลังด้วย flood fill จากขอบให้โปร่งใส), `loginmain.png` (รูปกดเข้าสู่ระบบหน้า login), `linkcard.png` (หัวข้อขั้นผูกบัญชีครั้งแรก)
 
 ### อนิเมชัน (index.css)
 - **`.special-card`** — การ์ดรางวัลพิเศษ แสงกวาดขอบ (conic-gradient + `@property --angle`)

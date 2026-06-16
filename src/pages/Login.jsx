@@ -68,12 +68,14 @@ export default function Login() {
             /* ── ขั้นที่ 2: ผูกบัญชีด้วยรหัสพนักงาน ── */
             <>
               <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--primary-dark)' }}>ผูกบัญชีครั้งแรก</div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+                {/* แทนข้อความ "ผูกบัญชีครั้งแรก" + คำแนะนำ ด้วยรูป — วาง linkcard.png ใน public/ */}
+                <img
+                  src="/linkcard.png"
+                  alt="ผูกบัญชีครั้งแรก — กรอกรหัสพนักงานที่ได้รับจากผู้ดูแลระบบ"
+                  style={{ width: '100%', maxWidth: 300, height: 'auto', display: 'block', margin: '0 auto', borderRadius: 16 }}
+                />
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 10 }}>
                   เข้าด้วย {pendingUser.email}
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-                  กรอกรหัสพนักงานที่ได้รับจากผู้ดูแลระบบ
                 </div>
               </div>
 
