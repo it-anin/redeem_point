@@ -99,6 +99,7 @@ src/
 | `transactions` | auto | employeeId(=อีเมล), employeeName, rewardId, rewardName, pointsUsed, status, approval, proofUrl, note, createdAt |
 | `announcements` | auto | title, body, pdfUrl, pdfName, createdAt |
 | `auditLogs` | auto | action, txId, employeeName, rewardName, detail, by, at (เก็บถาวร แก้/ลบไม่ได้) |
+| `settings` | `redeem` | enabled, hour, minute, dateY/dateM/dateD (เวลา/วันเปิดให้แลก — admin ตั้งในหน้าจัดการรางวัล) |
 
 ### ⚠️ ข้อตกลงเครื่องหมาย `pointsUsed` (สำคัญมาก)
 - **แลกรางวัล** → `pointsUsed` เป็น **บวก** (ใช้แต้มไป)
@@ -131,8 +132,10 @@ src/
 - รางวัลแยก 2 กลุ่ม: **🌟 รางวัลพิเศษ** (badge pulse) / **🎁 รางวัลปกติ**
 - การ์ดรางวัล (ฟอนต์ Itim ทั้งการ์ดรวมปุ่มแลก): รูป/emoji, ป้ายสต็อก (ขาว), ป้ายประเภท, รายละเอียด, ราคาแต้ม, ปุ่มแลก
   - แต้มไม่พอ → ปุ่ม "แต้มไม่พอ!" กดแล้วเด้ง popup "แต้มไม่พอ!" (รูป `iconcry.png`, ฟอนต์ Itim ทั้งการ์ดรวมปุ่ม)
+  - **ยังไม่ถึงเวลาเปิดแลก** → ปุ่ม disable แสดง "⏰ เปิดแลก HH:MM น." (หรือ DD/MM HH:MM ถ้ากำหนดวัน) — อ่านค่าจาก `settings/redeem`, เช็คทุก 30 วิ เปิดเองตอนถึงเวลา
+  - **มีคนแลกตัดหน้า (ของหมดพอดี)** → เด้ง popup "ไม่ทันจ้า! มีคนตัดหน้า" (รูป `iconlol.png`, modal-slideup) — ดักจาก error `'ของหมดแล้ว'` ใน transaction
   - รางวัล `requireProof` → ต้องแนบรูปหลักฐาน (Cloudinary) ก่อนยืนยัน
-- แลกแล้ว → สร้าง transaction `approval: 'รออนุมัติ'`, หักแต้มทันที
+- แลกแล้ว → หักแต้ม + ลดสต็อก + สร้าง transaction (`approval: 'รออนุมัติ'`) **ใน `runTransaction` เดียว (atomic)** ด้วย `tx.set` — กันกรณีแต้มหายแต่ไม่มีประวัติ
 - popup แจ้งเตือนเมื่อ admin อนุมัติ (จำด้วย localStorage `approvedSeen_<email>`)
 
 ### Announcements.jsx (ประกาศ)
@@ -160,7 +163,9 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - หมวด "มุมมองพนักงาน" → 📱 พนักงาน (แสดงผล) → `/admin/preview`
 
 ### Admin.jsx (ภาพรวม)
-การ์ดสถิติ + รายการล่าสุด + อันดับแต้มสะสม (กรอง admin ออก) + สต็อกรางวัล
+รายการล่าสุด + อันดับแต้มสะสม (กรอง admin ออก, โชว์ 5 คน) + สต็อกรางวัล (เอาการ์ดสถิติ stat-card ออกแล้ว)
+
+> หน้า admin ทุกหน้า **เอาหัวข้อ (page-title/page-sub) ออกแล้ว** — หน้าที่มีปุ่ม (จัดการพนักงาน/รางวัล/ประกาศ) เก็บปุ่มไว้ชิดขวาด้วย `<div />` ว่างใน page-header
 
 ### AdminEmployees.jsx (จัดการพนักงาน)
 - เพิ่มพนักงานด้วย **รหัสพนักงาน** (ไม่ต้องรู้อีเมล) → สร้าง `pendingEmployees/{รหัส}`; ช่อง "แผนก" เป็น **dropdown** (optgroup ตาม `DEPT_GROUPS`)
@@ -174,6 +179,7 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - เพิ่ม/แก้/ลบ รางวัล — ประเภท (ปกติ/พิเศษ), รูปจาก **URL** (รองรับแปลงลิงก์ Google Drive), ไม่จำกัดจำนวน, ต้องแนบหลักฐาน
 - เรียงแยก 2 กลุ่ม (พิเศษ/ปกติ) เหมือนฝั่งมือถือ
 - กด "แก้ไข" → เลื่อนขึ้นไปที่ฟอร์มอัตโนมัติ
+- **การ์ด "⏰ เวลาเปิดให้พนักงานแลกรางวัล"** — ตั้งเปิด/ปิดล็อก + เวลา (HH:MM) + เฉพาะวันที่ (เว้นว่าง=ทุกวัน) → บันทึกลง `settings/redeem`; ทั้งหน้าพนักงานและ Firestore Rules อ่านค่านี้
 
 ### AdminApprovals.jsx (อนุมัติของรางวัล)
 - รายการที่พนักงานแลกเข้ามา (มี `rewardId`) — กรองตามสถานะ
@@ -204,7 +210,7 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - ตัด tap-highlight สีฟ้าตอนแตะ + focus outline ออกแล้ว (`* { -webkit-tap-highlight-color: transparent }`)
 
 ### รูปภาพใน `public/` (อ้างด้วย path `/ชื่อไฟล์` — เปลี่ยนรูปทับชื่อเดิมได้โดยไม่ต้องแก้โค้ด + hard refresh)
-`icon.png` (โลโก้หัว Dashboard/topbar admin), `texttopbar.png` (แบนเนอร์ topbar พนักงาน), `Home.png` / `Megaphone.png` (ไอคอน bottom nav), `iconsleep.png` (โลโก้ drawer), `iconmegaphone.png` (หัวหน้าประกาศ), `iconcheck.png` (หัวหน้าประวัติ), `star-profile.png`, `iconadmin.png` (โลโก้ sidebar admin), `iconmove.webp` (การ์ตูนเคลื่อนไหวหน้า login — สร้างจาก `iconmove.gif` ลบพื้นหลังด้วย flood fill จากขอบให้โปร่งใส), `loginmain.png` (รูปกดเข้าสู่ระบบหน้า login), `linkcard.png` (พื้นขั้นผูกบัญชี — ช่องรหัสซ้อนทับ), `logocheck.png` (ไอคอนประวัติใน bottom nav), `iconplus.png` (ไอคอนเมนู sidebar admin), `iconcry.png` (รูปใน popup "แต้มไม่พอ!"), `testtext.png` / `textreward.png` / `texthistory.png` (รูปข้อความในกล่องคำพูดหน้าหลัก/ประกาศ/ประวัติ), `pointchip.png` (พื้นชิปแต้มคงเหลือ — ตัวเลขซ้อนทับ)
+`icon.png` (โลโก้หัว Dashboard/topbar admin), `texttopbar.png` (แบนเนอร์ topbar พนักงาน), `Home.png` / `Megaphone.png` (ไอคอน bottom nav), `iconsleep.png` (โลโก้ drawer), `iconmegaphone.png` (หัวหน้าประกาศ), `iconcheck.png` (หัวหน้าประวัติ), `star-profile.png`, `iconadmin.png` (โลโก้ sidebar admin), `iconmove.webp` (การ์ตูนเคลื่อนไหวหน้า login — สร้างจาก `iconmove.gif` ลบพื้นหลังด้วย flood fill จากขอบให้โปร่งใส), `loginmain.png` (รูปกดเข้าสู่ระบบหน้า login), `linkcard.png` (พื้นขั้นผูกบัญชี — ช่องรหัสซ้อนทับ), `logocheck.png` (ไอคอนประวัติใน bottom nav), `iconplus.png` (ไอคอนเมนู sidebar admin), `iconcry.png` (รูปใน popup "แต้มไม่พอ!"), `iconlol.png` (รูปใน popup "ไม่ทันจ้า! มีคนตัดหน้า"), `testtext.png` / `textreward.png` / `texthistory.png` (รูปข้อความในกล่องคำพูดหน้าหลัก/ประกาศ/ประวัติ), `pointchip.png` (พื้นชิปแต้มคงเหลือ — ตัวเลขซ้อนทับ)
 
 ### อนิเมชัน (index.css)
 - **`.special-card`** — การ์ดรางวัลพิเศษ แสงกวาดขอบ (conic-gradient + `@property --angle`)
@@ -228,10 +234,12 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 ---
 
 ## Firestore Rules (สรุป)
-- `employees` — อ่านได้เฉพาะของตัวเอง(อีเมล)/admin; พนักงานสร้าง doc ตัวเองตอนผูกบัญชี (ดึง role/points จาก pending); พนักงานลดแต้มตัวเองได้เฉพาะตอนแลก; admin แก้/ลบได้
-- `rewards` — อ่านได้ทุกคน(ล็อกอิน); admin สร้าง/ลบ; ลดสต็อกทีละ 1 ได้ตอนแลก
+- `employees` — อ่านได้เฉพาะของตัวเอง(อีเมล)/admin; พนักงานสร้าง doc ตัวเองตอนผูกบัญชี (ดึง role/points จาก pending); พนักงานลดแต้มตัวเองได้เฉพาะตอนแลก **และต้องผ่าน `isRedeemOpen()`**; admin แก้/ลบได้ทุกเวลา
+- `rewards` — อ่านได้ทุกคน(ล็อกอิน); admin สร้าง/ลบ; ลดสต็อกทีละ 1 ได้ตอนแลก **และต้องผ่าน `isRedeemOpen()`**
 - `transactions` — อ่าน/สร้างได้ทุกคน(ล็อกอิน); แก้/ลบเฉพาะ admin
 - `pendingEmployees` — อ่านได้(ล็อกอิน); admin สร้าง/แก้; ลบได้โดย admin หรือผู้ที่ผูกบัญชีด้วยรหัสนั้น
 - `announcements` — อ่านได้ทุกคน; เขียนเฉพาะ admin
 - `auditLogs` — admin อ่าน/สร้าง; แก้/ลบไม่ได้ (immutable)
+- `settings` — อ่านได้ทุกคน(ล็อกอิน); เขียนเฉพาะ admin
 - helper `isAdmin()` = doc `employees/{อีเมล}` มี role == 'admin'
+- **`isRedeemOpen()`** — เปิดแลกตามเวลา/วันที่ใน `settings/redeem` โดยอิง **เวลาเซิร์ฟเวอร์** (`request.time`, UTC → ไทย +7 ชั่วโมง, ไม่มี DST) ปลอมไม่ได้; ถ้าไม่มี doc หรือ `enabled != true` = เปิดตลอด

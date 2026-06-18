@@ -14,6 +14,34 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/pendingEmployees/$(code)).data;
     }
 
+    // ค่าตั้งเวลาเปิดแลก (admin ตั้งได้ในหน้าจัดการรางวัล → settings/redeem)
+    function redeemCfg() {
+      return get(/databases/$(database)/documents/settings/redeem).data;
+    }
+
+    // เวลาไทย (UTC+7) ของ request — ใช้เทียบวันที่เจาะจง
+    function thaiTime() {
+      return request.time + duration.value(7, 'h');
+    }
+
+    // ผ่านเงื่อนไขวันหรือไม่: ไม่กำหนดวัน (dateY ไม่มี/0) = ทุกวัน; ถ้ากำหนด ต้องตรงวันนั้น
+    function redeemDateOk() {
+      return !('dateY' in redeemCfg()) || redeemCfg().dateY == 0
+        || ( thaiTime().year() == redeemCfg().dateY
+          && thaiTime().month() == redeemCfg().dateM
+          && thaiTime().day() == redeemCfg().dateD );
+    }
+
+    // เปิดให้แลกรางวัลตามเวลา/วันที่ที่ admin ตั้ง — อิงเวลาเซิร์ฟเวอร์ (request.time, UTC) ปลอมไม่ได้
+    // ไทย = UTC+7 คงที่ ไม่มี DST → แปลงด้วย +7 ชั่วโมง; ถ้าไม่มี doc หรือปิดล็อก = เปิดตลอด
+    function isRedeemOpen() {
+      return !exists(/databases/$(database)/documents/settings/redeem)
+        || redeemCfg().enabled != true
+        || ( redeemDateOk()
+          && ( ((request.time.hours() + 7) % 24) * 60 + request.time.minutes() )
+               >= (redeemCfg().hour * 60 + redeemCfg().minute) );
+    }
+
     // พนักงานที่เข้าระบบแล้ว (doc id = อีเมล Google)
     match /employees/{email} {
       allow read: if request.auth != null && (email == request.auth.token.email || isAdmin());
@@ -27,10 +55,11 @@ service cloud.firestore {
             && request.resource.data.role == pending(request.resource.data.code).role
             && request.resource.data.points == pending(request.resource.data.code).points);
 
-      // admin แก้ได้ทุกอย่าง / พนักงานลดแต้มตัวเองได้เท่านั้น (ตอนแลกรางวัล)
+      // admin แก้ได้ทุกอย่าง (ทุกเวลา) / พนักงานลดแต้มตัวเองได้เฉพาะตอนแลก และต้องหลัง 15:00
       allow update: if isAdmin()
         || (request.auth != null
             && email == request.auth.token.email
+            && isRedeemOpen()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points'])
             && request.resource.data.points <= resource.data.points
             && request.resource.data.points >= 0);
@@ -54,6 +83,7 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
       allow update: if isAdmin()
         || (request.auth != null
+            && isRedeemOpen()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
             && resource.data.stock > 0
             && request.resource.data.stock == resource.data.stock - 1);
@@ -76,6 +106,12 @@ service cloud.firestore {
     match /auditLogs/{logId} {
       allow read, create: if isAdmin();
       allow update, delete: if false;
+    }
+
+    // ตั้งค่าระบบ (เช่น เวลาเปิดแลก settings/redeem): อ่านได้ทุกคน(ล็อกอิน), เขียนเฉพาะ admin
+    match /settings/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
     }
   }
 }

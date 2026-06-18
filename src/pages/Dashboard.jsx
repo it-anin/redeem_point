@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, getDocs, doc, runTransaction, addDoc, serverTimestamp, query, where } from 'firebase/firestore'
+import { collection, getDocs, doc, getDoc, runTransaction, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 
@@ -17,6 +17,25 @@ async function uploadToCloudinary(file) {
   return data.secure_url
 }
 
+// ค่า default ถ้ายังโหลด settings/redeem ไม่เสร็จ (admin ตั้งค่าได้ในหน้าจัดการรางวัล)
+// dateY/dateM/dateD = 0 → ไม่จำกัดวัน (ทุกวัน); ถ้ากำหนด → เปิดเฉพาะวันนั้น
+const DEFAULT_REDEEM_CFG = { enabled: true, hour: 15, minute: 0, dateY: 0, dateM: 0, dateD: 0 }
+
+// เปิดให้แลกตอนนี้ไหม? (เทียบเวลาเครื่อง — ฝั่ง server มี Firestore Rules กันอีกชั้น)
+function isOpenNow(cfg) {
+  if (!cfg?.enabled) return true
+  const now = new Date()
+  // ถ้ากำหนดวันเจาะจง → ต้องตรงวันนั้น (getMonth() เป็น 0-based จึง +1)
+  if (cfg.dateY) {
+    if (now.getFullYear() !== cfg.dateY || (now.getMonth() + 1) !== cfg.dateM || now.getDate() !== cfg.dateD) return false
+  }
+  return now.getHours() * 60 + now.getMinutes() >= (cfg.hour || 0) * 60 + (cfg.minute || 0)
+}
+const pad2 = (n) => String(n ?? 0).padStart(2, '0')
+const fmtTime = (cfg) => `${pad2(cfg?.hour)}:${pad2(cfg?.minute)}`
+// ป้ายบนปุ่ม: ถ้ามีวันเจาะจง โชว์ "DD/MM HH:MM" ไม่งั้นโชว์แค่เวลา
+const fmtWhen = (cfg) => cfg?.dateY ? `${pad2(cfg.dateD)}/${pad2(cfg.dateM)} ${fmtTime(cfg)}` : fmtTime(cfg)
+
 export default function Dashboard() {
   const { profile, user, patchProfile } = useAuth()
   const [rewards, setRewards] = useState([])
@@ -31,15 +50,36 @@ export default function Dashboard() {
   const [pointsClosing, setPointsClosing] = useState(false)
   const [notEnough, setNotEnough] = useState(false) // popup เมื่อแต้มไม่พอ
   const [notEnoughClosing, setNotEnoughClosing] = useState(false)
+  const [soldOut, setSoldOut] = useState(false) // popup เมื่อของหมด (มีคนตัดหน้า)
+  const [soldOutClosing, setSoldOutClosing] = useState(false)
   const [received, setReceived] = useState([]) // แต้มที่ได้รับเดือนนี้ (HR เพิ่มให้)
   const [approvedModal, setApprovedModal] = useState(false)
   const [approvedList, setApprovedList] = useState([]) // รางวัลที่เพิ่งได้รับการอนุมัติ
+  // เวลาเปิดแลก (อ่านจาก settings/redeem ที่ admin ตั้ง) + สถานะเปิด/ปิดตอนนี้
+  const [redeemCfg, setRedeemCfg] = useState(DEFAULT_REDEEM_CFG)
+  const [redeemOpen, setRedeemOpen] = useState(() => isOpenNow(DEFAULT_REDEEM_CFG))
 
   useEffect(() => {
     fetchRewards()
     fetchReceived()
     fetchApprovedNotifications()
+    fetchRedeemCfg()
   }, [])
+
+  // เช็คเวลาเปิดแลกใหม่ทุก 30 วิ (และทุกครั้งที่ cfg เปลี่ยน) ให้ปุ่มเปิด/ปิดเองตามเวลา
+  useEffect(() => {
+    const tick = () => setRedeemOpen(isOpenNow(redeemCfg))
+    tick()
+    const id = setInterval(tick, 30000)
+    return () => clearInterval(id)
+  }, [redeemCfg])
+
+  const fetchRedeemCfg = async () => {
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'redeem'))
+      if (snap.exists()) setRedeemCfg(c => ({ ...c, ...snap.data() }))
+    } catch { /* ใช้ค่า default */ }
+  }
 
   // แจ้งเตือนรางวัลที่ admin อนุมัติแล้ว (ที่ยังไม่เคยแจ้ง) — จำด้วย localStorage
   const fetchApprovedNotifications = async () => {
@@ -86,6 +126,12 @@ export default function Dashboard() {
     setTimeout(() => { setNotEnough(false); setNotEnoughClosing(false) }, 280)
   }
 
+  // ปิด popup ของหมด (มีคนตัดหน้า) พร้อมอนิเมชัน slide up out
+  const closeSoldOut = () => {
+    setSoldOutClosing(true)
+    setTimeout(() => { setSoldOut(false); setSoldOutClosing(false) }, 280)
+  }
+
   // ปิดกล่องยืนยันการแลกพร้อมอนิเมชัน slide up out
   const closeRedeem = () => {
     setRedeemClosing(true)
@@ -100,6 +146,7 @@ export default function Dashboard() {
 
   const handleRedeem = async (reward) => {
     setErrMsg('')
+    if (!redeemOpen) return // ยังไม่ถึงเวลาเปิดแลก
     if ((profile?.points ?? 0) < reward.pointCost) {
       setErrMsg(`แต้มไม่พอ! ต้องการ ${reward.pointCost} แต้ม (มี ${profile.points})`)
       return
@@ -123,6 +170,8 @@ export default function Dashboard() {
         proofUrl = await uploadToCloudinary(proofFile)
       }
 
+      // จองที่อยู่ + ID ของเอกสารประวัติไว้ก่อน (ยังไม่เขียน) เพื่อใช้ tx.set ในก้อนเดียวกัน
+      const txRef = doc(collection(db, 'transactions'))
       let newPoints
       await runTransaction(db, async (tx) => {
         const empRef = doc(db, 'employees', user.email)
@@ -144,22 +193,24 @@ export default function Dashboard() {
         tx.update(empRef, { points: newPoints })
         // รางวัลไม่จำกัด ไม่ต้องหักสต็อก
         if (!unlimited) tx.update(rwRef, { stock: stock - 1 })
+
+        // บันทึกประวัติในก้อนเดียวกัน → atomic กับการหักแต้ม/สต็อก
+        // (createdAt ใช้ new Date เพราะ serverTimestamp ใช้ใน transaction ไม่ได้)
+        tx.set(txRef, {
+          employeeId:   user.email,
+          employeeName: profile.name,
+          rewardId:     reward.id,
+          rewardName:   reward.name,
+          pointsUsed:   reward.pointCost,
+          createdAt:    new Date(),
+          status:       'สำเร็จ',
+          approval:     'รออนุมัติ',
+          ...(proofUrl ? { proofUrl } : {}),
+        })
       })
 
       // อัปเดตแต้มในหน้าจอทันที ไม่ต้อง refresh
       patchProfile({ points: newPoints })
-
-      await addDoc(collection(db, 'transactions'), {
-        employeeId:   user.email,
-        employeeName: profile.name,
-        rewardId:     reward.id,
-        rewardName:   reward.name,
-        pointsUsed:   reward.pointCost,
-        createdAt:    serverTimestamp(),
-        status:       'สำเร็จ',
-        approval:     'รออนุมัติ',
-        ...(proofUrl ? { proofUrl } : {}),
-      })
 
       setRedeeming(null)
       setProofFile(null)
@@ -167,7 +218,16 @@ export default function Dashboard() {
       fetchRewards()
       setTimeout(() => setSuccessMsg(''), 3000)
     } catch (e) {
-      setErrMsg(e.message)
+      if (e.message === 'ของหมดแล้ว') {
+        // มีคนแลกตัดหน้าไปก่อน → ปิดกล่องยืนยัน แล้วเด้ง popup "ไม่ทันจ้า!"
+        setRedeeming(null)
+        setProofFile(null)
+        setErrMsg('')
+        setSoldOut(true)
+        fetchRewards() // รีเฟรชสต็อกให้ปุ่มกลายเป็น "หมดแล้ว"
+      } else {
+        setErrMsg(e.message)
+      }
     } finally {
       setUploading(false)
     }
@@ -212,14 +272,15 @@ export default function Dashboard() {
       {(() => {
         const outOfStock = !r.unlimited && r.stock === 0
         const canAfford = (profile?.points ?? 0) >= r.pointCost
+        const disabled = outOfStock || !redeemOpen
         return (
           <button
             className="btn-primary"
-            style={{ width: '100%', marginTop: 12, padding: '10px', opacity: (outOfStock || !canAfford) ? 0.55 : 1, cursor: outOfStock ? 'not-allowed' : 'pointer', fontFamily: 'Itim, sans-serif' }}
-            disabled={outOfStock}
+            style={{ width: '100%', marginTop: 12, padding: '10px', opacity: (disabled || !canAfford) ? 0.55 : 1, cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'Itim, sans-serif' }}
+            disabled={disabled}
             onClick={() => { if (!canAfford) { setNotEnough(true); return } handleRedeem(r) }}
           >
-            {outOfStock ? 'หมดแล้ว' : !canAfford ? 'แต้มไม่พอ!' : 'แลกเลย!'}
+            {outOfStock ? 'หมดแล้ว' : !redeemOpen ? `⏰ เปิดแลก ${fmtWhen(redeemCfg)} น.` : !canAfford ? 'แต้มไม่พอ!' : 'แลกเลย!'}
           </button>
         )
       })()}
@@ -245,7 +306,7 @@ export default function Dashboard() {
           {/* พื้นชิปเป็นรูป — วาง pointchip.png ใน public/ */}
           <img src="/pointchip.png" alt="แต้มคงเหลือทั้งหมด" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 40 }} />
           {/* ตัวเลขแต้มซ้อนบนรูป — ปรับ right / top ให้ตรงช่องในรูป */}
-          <div style={{ position: 'absolute', right: '25%', top: '60%', transform: 'translateY(-50%)', fontSize: 22, fontWeight: 700, color: 'var(--primary-dark)', lineHeight: 1.1 }}>
+          <div style={{ position: 'absolute', right: '17%', top: '58%', transform: 'translateY(-50%)', fontSize: 22, fontWeight: 700, color: 'var(--primary-dark)', lineHeight: 1.1 }}>
             {profile?.points?.toLocaleString() ?? 0}
           </div>
         </div>
@@ -270,10 +331,8 @@ export default function Dashboard() {
         <>
           {specialRewards.length > 0 && (
             <div style={{ marginBottom: 24 }}>
-              <div className="card special-card" style={{ display: 'inline-block', marginBottom: 16, padding: '12px 24px', background: 'linear-gradient(135deg, #FFF3DA 0%, #FFFBF0 100%)' }}>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>
-                  🌟 <span className="special-title">รางวัลพิเศษ</span>
-                </div>
+              <div className="shine-sweep" style={{ display: 'inline-block', marginBottom: 16, borderRadius: 30 }}>
+                <img src="/bannerspecial.png" alt="รางวัลพิเศษ" style={{ maxWidth: 200, height: 'auto', display: 'block' }} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
                 {specialRewards.map(renderCard)}
@@ -324,6 +383,17 @@ export default function Dashboard() {
             <img src="/iconcry.png" alt="" style={{ width: 150, height: 150, objectFit: 'contain', display: 'block', margin: '0 auto 12px' }} />
             <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 25 }}>แต้มไม่พอ!</div>
             <button className="btn-primary" style={{ width: '100%', padding: '11px' }} onClick={closeNotEnough}>ไปทำงานก่อน</button>
+          </div>
+        </div>
+      )}
+
+      {/* ของหมด (มีคนตัดหน้า) modal */}
+      {soldOut && (
+        <div className={`modal-overlay ${soldOutClosing ? 'overlay-out' : ''}`} style={{ position: 'fixed', inset: 0, background: 'rgba(46,31,14,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={closeSoldOut}>
+          <div className={`card ${soldOutClosing ? 'modal-slideup-out' : 'modal-slideup'}`} style={{ maxWidth: 320, width: '100%', textAlign: 'center', padding: 28 }} onClick={e => e.stopPropagation()}>
+            <img src="/iconlol.png" alt="" style={{ width: 150, height: 150, objectFit: 'contain', display: 'block', margin: '0 auto 12px' }} />
+            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 25 }}>ไม่ทันจ้า! มีคนตัดหน้า</div>
+            <button className="btn-primary" style={{ width: '100%', padding: '11px' }} onClick={closeSoldOut}>เคยอม</button>
           </div>
         </div>
       )}

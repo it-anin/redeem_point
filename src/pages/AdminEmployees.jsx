@@ -219,10 +219,7 @@ export default function AdminEmployees() {
   return (
     <>
       <div className="page-header">
-        <div>
-          <div className="page-title">👥 จัดการพนักงาน</div>
-          <div className="page-sub">เพิ่มพนักงาน (กำหนดรหัส) และปรับแต้ม</div>
-        </div>
+        <div />
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-danger" onClick={() => { setResetText(''); setResetModal(true) }}>
             ♻️ รีเซ็ตแต้มทั้งระบบ

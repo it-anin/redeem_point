@@ -64,12 +64,6 @@ export default function AdminApprovals() {
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <div className="page-title">✅ อนุมัติของรางวัล</div>
-          <div className="page-sub">รายการที่พนักงานกดแลกของเข้ามา {pendingCount > 0 && `· รออนุมัติ ${pendingCount} รายการ`}</div>
-        </div>
-      </div>
 
       {msg && <div style={{ background: '#D1FAE5', color: '#065F46', padding: '12px 18px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontWeight: 700 }}>✅ {msg}</div>}
 

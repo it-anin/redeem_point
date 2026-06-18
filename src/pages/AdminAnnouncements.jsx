@@ -76,10 +76,7 @@ export default function AdminAnnouncements() {
   return (
     <>
       <div className="page-header">
-        <div>
-          <div className="page-title">📢 จัดการประกาศ</div>
-          <div className="page-sub">โพสต์และลบประกาศที่พนักงานจะเห็น</div>
-        </div>
+        <div />
         <button className="btn-primary" onClick={toggleForm}>
           {showForm && !formClosing ? '✕ ปิด' : '+ เพิ่มประกาศ'}
         </button>

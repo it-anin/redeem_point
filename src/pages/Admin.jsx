@@ -23,8 +23,6 @@ export default function Admin() {
     fetchAll()
   }, [])
 
-  const totalPoints = employees.reduce((s, e) => s + (e.points ?? 0), 0)
-  const totalRedeemed = transactions.length
   const topEmployees = [...employees]
     .filter(e => e.role !== 'admin')
     .sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
@@ -34,36 +32,6 @@ export default function Admin() {
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <div className="page-title">📊 ภาพรวมระบบ</div>
-          <div className="page-sub">สถิติทั้งหมดของระบบแลกแต้ม</div>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-emoji">👥</div>
-          <div className="stat-num">{employees.length}</div>
-          <div className="stat-label">พนักงานทั้งหมด</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-emoji">⭐</div>
-          <div className="stat-num">{totalPoints.toLocaleString()}</div>
-          <div className="stat-label">แต้มรวมในระบบ</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-emoji">🎁</div>
-          <div className="stat-num">{rewards.length}</div>
-          <div className="stat-label">รางวัลทั้งหมด</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-emoji">🛍️</div>
-          <div className="stat-num">{totalRedeemed}</div>
-          <div className="stat-label">แลกทั้งหมด</div>
-        </div>
-      </div>
 
       <div className="two-col">
         {/* Left: Recent transactions */}

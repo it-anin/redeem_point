@@ -11,12 +11,6 @@ export default function MobilePreview() {
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <div className="page-title">📱 พนักงาน (แสดงผล)</div>
-          <div className="page-sub">ตัวอย่างหน้าจอที่พนักงานเห็นบนมือถือ (สัดส่วน 390 × 844)</div>
-        </div>
-      </div>
 
       {/* แท็บเลือกหน้า */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>

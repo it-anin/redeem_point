@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore'
+import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 
 const EMPTY = { name: '', description: '', pointCost: '', stock: '', type: 'normal', image: '', unlimited: false, requireProof: false }
@@ -24,17 +24,48 @@ export default function AdminRewards() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
   const formRef = useRef(null)
+  // ตั้งเวลาเปิดให้พนักงานแลก (เก็บใน settings/redeem)
+  const [redeemCfg, setRedeemCfg] = useState({ enabled: true, hour: 15, minute: 0, dateY: 0, dateM: 0, dateD: 0 })
+  const [savingCfg, setSavingCfg] = useState(false)
 
   const scrollToForm = () => {
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
 
-  useEffect(() => { fetchRewards() }, [])
+  useEffect(() => { fetchRewards(); fetchRedeemCfg() }, [])
 
   const fetchRewards = async () => {
     const snap = await getDocs(collection(db, 'rewards'))
     setRewards(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     setLoading(false)
+  }
+
+  const fetchRedeemCfg = async () => {
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'redeem'))
+      if (snap.exists()) setRedeemCfg(c => ({ ...c, ...snap.data() }))
+    } catch { /* ใช้ค่า default */ }
+  }
+
+  const saveRedeemCfg = async () => {
+    setSavingCfg(true)
+    setMsg({ type: '', text: '' })
+    try {
+      await setDoc(doc(db, 'settings', 'redeem'), {
+        enabled: !!redeemCfg.enabled,
+        hour: Number(redeemCfg.hour) || 0,
+        minute: Number(redeemCfg.minute) || 0,
+        dateY: Number(redeemCfg.dateY) || 0,
+        dateM: Number(redeemCfg.dateM) || 0,
+        dateD: Number(redeemCfg.dateD) || 0,
+        updatedAt: new Date(),
+      }, { merge: true })
+      setMsg({ type: 'success', text: 'บันทึกเวลาเปิดแลกเรียบร้อย!' })
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message })
+    } finally {
+      setSavingCfg(false)
+    }
   }
 
   const openAdd = () => { setEditing(null); setForm(EMPTY); setShowForm(true); scrollToForm() }
@@ -120,10 +151,7 @@ export default function AdminRewards() {
   return (
     <>
       <div className="page-header">
-        <div>
-          <div className="page-title">🎁 จัดการรางวัล</div>
-          <div className="page-sub">เพิ่ม แก้ไข และลบรางวัลในระบบ</div>
-        </div>
+        <div />
         <button className="btn-primary" onClick={openAdd}>+ เพิ่มรางวัล</button>
       </div>
 
@@ -132,6 +160,63 @@ export default function AdminRewards() {
           {msg.type === 'success' ? '✅' : '⚠️'} {msg.text}
         </div>
       )}
+
+      {/* ตั้งเวลาเปิดให้พนักงานแลกรางวัล */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 6 }}>⏰ เวลาเปิดให้พนักงานแลกรางวัล</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+          ก่อนถึงเวลานี้ ปุ่ม "แลกเลย!" ของพนักงานจะกดไม่ได้ (บังคับทั้งฝั่งแอปและเซิร์ฟเวอร์) — อิงเวลาประเทศไทย
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!redeemCfg.enabled} onChange={e => setRedeemCfg(c => ({ ...c, enabled: e.target.checked }))} />
+            เปิดใช้การล็อกเวลา
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>เปิดแลกเวลา</span>
+            <input
+              type="time"
+              className="input"
+              style={{ width: 140, opacity: redeemCfg.enabled ? 1 : 0.5 }}
+              disabled={!redeemCfg.enabled}
+              value={`${String(redeemCfg.hour ?? 0).padStart(2, '0')}:${String(redeemCfg.minute ?? 0).padStart(2, '0')}`}
+              onChange={e => {
+                const [h, m] = e.target.value.split(':').map(Number)
+                setRedeemCfg(c => ({ ...c, hour: h || 0, minute: m || 0 }))
+              }}
+            />
+            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>น.</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>เฉพาะวันที่</span>
+            <input
+              type="date"
+              className="input"
+              style={{ width: 170, opacity: redeemCfg.enabled ? 1 : 0.5 }}
+              disabled={!redeemCfg.enabled}
+              value={redeemCfg.dateY ? `${redeemCfg.dateY}-${String(redeemCfg.dateM).padStart(2, '0')}-${String(redeemCfg.dateD).padStart(2, '0')}` : ''}
+              onChange={e => {
+                if (!e.target.value) { setRedeemCfg(c => ({ ...c, dateY: 0, dateM: 0, dateD: 0 })); return }
+                const [y, m, d] = e.target.value.split('-').map(Number)
+                setRedeemCfg(c => ({ ...c, dateY: y, dateM: m, dateD: d }))
+              }}
+            />
+            {redeemCfg.dateY ? (
+              <button type="button" className="btn-danger" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setRedeemCfg(c => ({ ...c, dateY: 0, dateM: 0, dateD: 0 }))}>ล้าง</button>
+            ) : (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>(เว้นว่าง = ทุกวัน)</span>
+            )}
+          </div>
+          <button className="btn-primary" style={{ padding: '9px 20px', fontSize: 13 }} onClick={saveRedeemCfg} disabled={savingCfg}>
+            {savingCfg ? 'กำลังบันทึก...' : '💾 บันทึกเวลา'}
+          </button>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
+          สถานะ: {redeemCfg.enabled
+            ? `🔒 ล็อก — เปิดแลก ${redeemCfg.dateY ? `เฉพาะวันที่ ${String(redeemCfg.dateD).padStart(2, '0')}/${String(redeemCfg.dateM).padStart(2, '0')}/${redeemCfg.dateY} ` : '(ทุกวัน) '}ตั้งแต่ ${String(redeemCfg.hour ?? 0).padStart(2, '0')}:${String(redeemCfg.minute ?? 0).padStart(2, '0')} น.`
+            : '🔓 ปิดล็อก — พนักงานแลกได้ทุกเวลา'}
+        </div>
+      </div>
 
       {/* Form */}
       {showForm && (

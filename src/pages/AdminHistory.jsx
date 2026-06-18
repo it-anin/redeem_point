@@ -144,12 +144,6 @@ export default function AdminHistory() {
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <div className="page-title">📜 ประวัติทั้งหมด</div>
-          <div className="page-sub">รายการแลกรางวัลของพนักงานทุกคน</div>
-        </div>
-      </div>
 
       {msg && <div style={{ background: '#D1FAE5', color: '#065F46', padding: '12px 18px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontWeight: 700 }}>✅ {msg}</div>}
 
