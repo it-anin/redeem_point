@@ -33,7 +33,9 @@ export default function Announcements() {
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src="/iconmegaphone.png" alt="" style={{ width: 100, height: 100, objectFit: 'contain', flexShrink: 0 }} />
-          <div className="speech-bubble">แจ้งข่าวสาร &amp; ของรางวัล<br />จากแผนก HR จ้า</div>
+          <div className="speech-bubble" style={{ padding: '5px 10px' }}>
+            <img src="/textreward.png" alt="" className="img-glow" style={{ maxWidth: 170, height: 'auto', objectFit: 'contain', display: 'block' }} />
+          </div>
         </div>
       </div>
 

@@ -34,7 +34,9 @@ export default function History() {
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src="/iconcheck.png" alt="" style={{ width: 100, height: 100, objectFit: 'contain', flexShrink: 0 }} />
-          <div className="speech-bubble">แลกอะไรไปแล้วบ้างนะ? <br /> อนุมัติหรือยัง?</div>
+          <div className="speech-bubble" style={{ padding: '5px 10px' }}>
+            <img src="/texthistory.png" alt="" className="img-glow" style={{ maxWidth: 170, height: 'auto', objectFit: 'contain', display: 'block' }} />
+          </div>
         </div>
       </div>
 

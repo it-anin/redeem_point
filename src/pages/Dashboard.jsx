@@ -177,7 +177,7 @@ export default function Dashboard() {
   const normalRewards  = rewards.filter(r => r.type !== 'special')
 
   const renderCard = (r) => (
-    <div key={r.id} className="card" style={{ textAlign: 'center', position: 'relative' }}>
+    <div key={r.id} className="card" style={{ textAlign: 'center', position: 'relative', fontFamily: 'Itim, sans-serif' }}>
       {r.unlimited ? (
         <span className="badge" style={{ position: 'absolute', top: 12, right: 12, background: '#fff', color: 'var(--primary-dark)', border: '1px solid var(--border)' }}>♾️ ไม่จำกัด</span>
       ) : r.stock === 0 ? (
@@ -215,7 +215,7 @@ export default function Dashboard() {
         return (
           <button
             className="btn-primary"
-            style={{ width: '100%', marginTop: 12, padding: '10px', opacity: (outOfStock || !canAfford) ? 0.55 : 1, cursor: outOfStock ? 'not-allowed' : 'pointer' }}
+            style={{ width: '100%', marginTop: 12, padding: '10px', opacity: (outOfStock || !canAfford) ? 0.55 : 1, cursor: outOfStock ? 'not-allowed' : 'pointer', fontFamily: 'Itim, sans-serif' }}
             disabled={outOfStock}
             onClick={() => { if (!canAfford) { setNotEnough(true); return } handleRedeem(r) }}
           >
@@ -232,20 +232,21 @@ export default function Dashboard() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <img src="/icon.png" alt="" style={{ width: 100, height: 100, objectFit: 'contain', flexShrink: 0 }} />
-            <div className="speech-bubble">ถ้าแต้มไม่พอ <br />ขยันทำงานก่อนน้า 🧡</div>
+            <div className="speech-bubble">
+              <img src="/testtext.png" alt="" className="img-glow" style={{ maxWidth: 130, height: 'auto', objectFit: 'contain', display: 'block' }} />
+            </div>
           </div>
         </div>
         <div
           className="neon-glow"
           onClick={() => setPointsModal(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--surface)', borderRadius: 40, padding: '12px 24px 12px 12px', width: '100%', cursor: 'pointer' }}
+          style={{ position: 'relative', width: '100%', cursor: 'pointer', borderRadius: 40 }}
         >
-          <div style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
-            <div style={{ fontSize: 18, color: 'var(--text-muted)', fontWeight: 400, fontFamily: 'Itim, sans-serif' }}>แต้มคงเหลือทั้งหมด</div>
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--primary-dark)', lineHeight: 1.1, flexShrink: 0, marginRight: 10 }}>
+          {/* พื้นชิปเป็นรูป — วาง pointchip.png ใน public/ */}
+          <img src="/pointchip.png" alt="แต้มคงเหลือทั้งหมด" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 40 }} />
+          {/* ตัวเลขแต้มซ้อนบนรูป — ปรับ right / top ให้ตรงช่องในรูป */}
+          <div style={{ position: 'absolute', right: '25%', top: '60%', transform: 'translateY(-50%)', fontSize: 22, fontWeight: 700, color: 'var(--primary-dark)', lineHeight: 1.1 }}>
             {profile?.points?.toLocaleString() ?? 0}
-            <span style={{ fontSize: 18, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 20, fontFamily: 'Itim, sans-serif' }}>แต้ม</span>
           </div>
         </div>
       </div>
@@ -320,10 +321,9 @@ export default function Dashboard() {
       {notEnough && (
         <div className={`modal-overlay ${notEnoughClosing ? 'overlay-out' : ''}`} style={{ position: 'fixed', inset: 0, background: 'rgba(46,31,14,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={closeNotEnough}>
           <div className={`card ${notEnoughClosing ? 'modal-slideup-out' : 'modal-slideup'}`} style={{ maxWidth: 320, width: '100%', textAlign: 'center', padding: 28 }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>💪</div>
-            <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>แต้มไม่พอ!</div>
-            <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 20 }}>ทำงานก่อนนะ 😊</div>
-            <button className="btn-primary" style={{ width: '100%', padding: '11px' }} onClick={closeNotEnough}>เข้าใจแล้ว</button>
+            <img src="/iconcry.png" alt="" style={{ width: 150, height: 150, objectFit: 'contain', display: 'block', margin: '0 auto 12px' }} />
+            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 25 }}>แต้มไม่พอ!</div>
+            <button className="btn-primary" style={{ width: '100%', padding: '11px' }} onClick={closeNotEnough}>ไปทำงานก่อน</button>
           </div>
         </div>
       )}

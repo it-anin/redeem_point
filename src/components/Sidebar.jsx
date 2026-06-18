@@ -7,16 +7,19 @@ import { useAuth } from '../context/AuthContext'
 const NAV_EMPLOYEE = [
   { to: '/dashboard',     icon: <img src="/Home.png" alt="" style={{ width: 32, height: 32, objectFit: 'contain', verticalAlign: 'middle' }} />, label: 'หน้าหลัก' },
   { to: '/announcements', icon: <img src="/Megaphone.png" alt="" style={{ width: 32, height: 32, objectFit: 'contain', verticalAlign: 'middle' }} />, label: 'ประกาศ' },
-  { to: '/history',       icon: '📜', label: 'ประวัติการแลก' },
+  { to: '/history',       icon: <img src="/logocheck.png" alt="" style={{ width: 32, height: 32, objectFit: 'contain', verticalAlign: 'middle' }} />, label: 'ประวัติการแลก' },
 ]
 
+// ไอคอน sidebar admin ทั้งหมดใช้ iconplus.png
+const MENU_ICON = <img src="/iconplus.png" alt="" style={{ width: 30, height: 30, objectFit: 'contain', verticalAlign: 'middle' }} />
+
 const NAV_ADMIN = [
-  { to: '/admin',              icon: '📊', label: 'Overview' },
-  { to: '/admin/employees',    icon: '👥', label: 'พนักงาน' },
-  { to: '/admin/rewards',      icon: '🎁', label: 'จัดการรางวัล' },
-  { to: '/admin/approvals',    icon: '✅', label: 'อนุมัติของรางวัล' },
-  { to: '/admin/announcements', icon: '📢', label: 'จัดการประกาศ' },
-  { to: '/admin/history',      icon: '📜', label: 'ประวัติทั้งหมด' },
+  { to: '/admin',              icon: MENU_ICON, label: 'Overview' },
+  { to: '/admin/employees',    icon: MENU_ICON, label: 'พนักงาน' },
+  { to: '/admin/rewards',      icon: MENU_ICON, label: 'จัดการรางวัล' },
+  { to: '/admin/approvals',    icon: MENU_ICON, label: 'อนุมัติของรางวัล' },
+  { to: '/admin/announcements', icon: MENU_ICON, label: 'จัดการประกาศ' },
+  { to: '/admin/history',      icon: MENU_ICON, label: 'ประวัติทั้งหมด' },
 ]
 
 function NavItems({ items, onClose }) {
@@ -78,11 +81,11 @@ function SidebarContent({ onClose, compact }) {
 
   return (
     <>
-      <div className="sidebar-logo" style={{ justifyContent: 'flex-end' }}>
+      <div className="sidebar-logo" style={{ justifyContent: 'center' }}>
         <div className="sidebar-logo-icon" style={{ background: 'none', border: 'none' }}><img src="/iconadmin.png" alt="" style={{ width: 100, height: 100, objectFit: 'contain' }} /></div>
-        <div className="speech-bubble" style={{ marginLeft: 20 }}>
+        <div className="speech-bubble" style={{ marginLeft: 20, padding: '12px 16px' }}>
           <div className="sidebar-logo-name">Admin</div>
-          <div className="sidebar-logo-sub">จัดการแต้มและของรางวัล</div>
+          <div className="sidebar-logo-sub">ดูแลระบบ</div>
         </div>
       </div>
 
@@ -91,7 +94,7 @@ function SidebarContent({ onClose, compact }) {
           <div className="nav-section-label">Admin</div>
           <NavItems items={NAV_ADMIN} onClose={onClose} />
           <div className="nav-section-label" style={{ marginTop: 8 }}>มุมมองพนักงาน</div>
-          <NavItems items={[{ to: '/admin/preview', icon: '📱', label: 'พนักงาน (แสดงผล)' }]} onClose={onClose} />
+          <NavItems items={[{ to: '/admin/preview', icon: MENU_ICON, label: 'พนักงาน (แสดงผล)' }]} onClose={onClose} />
         </>
       ) : (
         <>

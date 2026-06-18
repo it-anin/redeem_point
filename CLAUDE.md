@@ -83,7 +83,9 @@ src/
 - **redirect หลัง login เป็นแบบ declarative** — `Login.jsx` ไม่เรียก `navigate()` เองหลัง popup (จะ race กับ `onAuthStateChanged` ที่ยัง `getDoc` profile ไม่เสร็จ → เด้งกลับ login ต้องกด 2 รอบ) แต่ใช้ `if (user) return <Navigate to="/" replace />` รอจน profile พร้อมแล้วค่อยพาเข้าหน้าหลัก
 - **หน้า login มีตัวการ์ตูนเคลื่อนไหว** `iconmove.webp` (พื้นหลังโปร่งใส 160×160px) แทน emoji เดิม
 - **ไม่มีปุ่ม "เข้าสู่ระบบด้วย Google" แล้ว** — กดที่ **รูป `loginmain.png`** (ครอบด้วย `<button>` เพื่อโฟกัส/กดด้วยคีย์บอร์ดได้) เพื่อเรียก `signInWithPopup`; ตอนกำลังโหลดรูปจางลง + ขึ้น "กำลังเข้าสู่ระบบ..."
-- **ขั้นผูกบัญชีครั้งแรก** — แทนหัวข้อ "ผูกบัญชีครั้งแรก" + คำแนะนำด้วยรูป `linkcard.png` (ยังคงบรรทัด "เข้าด้วย {อีเมล}" ไว้ใต้รูป)
+- **ขั้นผูกบัญชีครั้งแรก** — ใช้รูป `linkcard.png` เป็นพื้น + **ช่องกรอกรหัสซ้อนทับบนรูป** (`position: absolute`, ปรับ `bottom`/`width`/`padding`/`fontSize` ให้ตรงช่องว่างในรูป); รหัสบังคับ **ตัวพิมพ์ใหญ่เสมอ** (`toUpperCase()` + `textTransform: uppercase`); **ไม่มีปุ่มยืนยัน** — กด Enter ในช่องเพื่อ submit (ขึ้น "กำลังผูกบัญชี..." ตอนโหลด) + ปุ่ม "← ใช้บัญชี Google อื่น"
+- **iconmove.webp ซ้อนทับบนการ์ด** (marginBottom ติดลบ) ให้การ์ตูนนั่งบนการ์ด
+- **ล็อกไม่ให้หน้า login เลื่อน** — `useEffect` ตั้ง `body.overflow = hidden` ตอนเข้าหน้า (คืนค่าเมื่อออก) + container `height: 100dvh; overflow: hidden`
 
 ---
 
@@ -116,17 +118,19 @@ src/
 ### เมนูล่าง (BottomNav) — `NAV_EMPLOYEE`
 1. **หน้าหลัก** (Home.png) → `/dashboard`
 2. **ประกาศ** (Megaphone.png) → `/announcements` — มี **badge ตัวเลข** ประกาศที่ยังไม่อ่าน
-3. **ประวัติการแลก** → `/history`
+3. **ประวัติการแลก** (logocheck.png) → `/history`
+
+> กล่องคำพูด (speech bubble) ทั้ง 3 หน้า mobile ใช้ **รูปข้อความ** แทนตัวอักษร (PNG โปร่งใส + คลาส `.img-glow` เรืองนีออน): หน้าหลัก = `testtext.png`, ประกาศ = `textreward.png`, ประวัติ = `texthistory.png`
 
 ### Drawer (แฮมเบอร์เกอร์ / กด topbar)
 แบบ compact: โลโก้ (iconsleep.png) + กล่องคำพูด + การ์ดข้อมูล (ชื่อ/แผนก/รหัสพนักงาน) + ปุ่มออกจากระบบ
 
 ### Dashboard.jsx (หน้าหลัก)
 - ทักทาย + รูปโลโก้ + กล่องคำพูด (speech bubble)
-- **ชิปแต้มคงเหลือ** — "แต้มคงเหลือทั้งหมด" + ตัวเลขแต้ม มีแสงนีออนชมพูฟุ้ง (`.neon-glow`) → **กดเพื่อดู popup "แต้มที่ได้รับเดือนนี้"** (jelly in/out)
+- **ชิปแต้มคงเหลือ** — พื้นเป็นรูป `pointchip.png` (width 100%) + **ตัวเลขแต้มซ้อนทับ** (`position: absolute`, ปรับ `right`/`top`) มีแสงนีออน (`.neon-glow`) → **กดเพื่อดู popup "แต้มที่ได้รับเดือนนี้"** (jelly in/out)
 - รางวัลแยก 2 กลุ่ม: **🌟 รางวัลพิเศษ** (badge pulse) / **🎁 รางวัลปกติ**
-- การ์ดรางวัล: รูป/emoji, ป้ายสต็อก (ขาว), ป้ายประเภท, รายละเอียด, ราคาแต้ม, ปุ่มแลก
-  - แต้มไม่พอ → ปุ่ม "แต้มไม่พอ!" กดแล้วเด้ง popup "ทำงานก่อนนะ"
+- การ์ดรางวัล (ฟอนต์ Itim ทั้งการ์ดรวมปุ่มแลก): รูป/emoji, ป้ายสต็อก (ขาว), ป้ายประเภท, รายละเอียด, ราคาแต้ม, ปุ่มแลก
+  - แต้มไม่พอ → ปุ่ม "แต้มไม่พอ!" กดแล้วเด้ง popup "แต้มไม่พอ!" (รูป `iconcry.png`, ฟอนต์ Itim ทั้งการ์ดรวมปุ่ม)
   - รางวัล `requireProof` → ต้องแนบรูปหลักฐาน (Cloudinary) ก่อนยืนยัน
 - แลกแล้ว → สร้าง transaction `approval: 'รออนุมัติ'`, หักแต้มทันที
 - popup แจ้งเตือนเมื่อ admin อนุมัติ (จำด้วย localStorage `approvedSeen_<email>`)
@@ -192,7 +196,7 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - **ธีมสี Peach & Coral** — กำหนดที่ `:root` (`--bg`, `--primary`, `--primary-dark`, `--border` ฯลฯ) แก้ที่เดียวเปลี่ยนทั้งแอป
 - **ฟอนต์**: Nunito (หลักฝั่งพนักงาน) + **Itim** (กล่องคำพูด, drawer พนักงาน, ข้อความน่ารัก) + **Sarabun** (หน้า admin) — import บรรทัดบนสุดของ index.css
   - **หน้า admin ใช้ Sarabun** — scope ที่ `.layout:not(.layout--mobile) .main` (รวมปุ่ม/ฟอร์ม/ตาราง) และ `.sidebar` + `.sidebar .speech-bubble`; ฝั่งพนักงาน (มี `.layout--mobile`) ยังเป็น Nunito/Itim
-- **sidebar admin**: โลโก้ `iconadmin.png` (100×100, ชิดขวา) + speech bubble "Admin / จัดการแต้มและของรางวัล"; **ไม่มีการ์ด avatar**; กว้าง `--sidebar-w: 320px`
+- **sidebar admin**: โลโก้ `iconadmin.png` (100×100) + speech bubble "Admin / ดูแลระบบ" (จัดกึ่งกลาง); **ไม่มีการ์ด avatar**; กว้าง `--sidebar-w: 320px`; ไอคอนเมนูทุกอันใช้ `iconplus.png` (ตัวแปร `MENU_ICON`); สีพื้นตอนเลือกเมนู = `.sidebar .nav-item.active { background: #FBEBE7 }` (เฉพาะ admin); avatar ในตารางจัดการพนักงานใช้ `star-profile.png`
 - **`.speech-bubble`** — กล่องคำพูดพื้นขาว หางชี้ซ้าย ฟอนต์ Itim (ใช้ Dashboard/Announcements/History/Sidebar)
 - **`.card`, `.btn-primary`, `.badge`, `.cost-pill`, `.stat-card`** — คลาส utility ใช้ร่วมทุกหน้า (แก้คลาส = กระทบทุกที่; อยากแยกใช้ inline style)
 - **`forceMobile`** = ไม่ใช่ admin หรือ `?preview=employee` → บังคับ layout มือถือ
@@ -200,18 +204,20 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - ตัด tap-highlight สีฟ้าตอนแตะ + focus outline ออกแล้ว (`* { -webkit-tap-highlight-color: transparent }`)
 
 ### รูปภาพใน `public/` (อ้างด้วย path `/ชื่อไฟล์` — เปลี่ยนรูปทับชื่อเดิมได้โดยไม่ต้องแก้โค้ด + hard refresh)
-`icon.png` (โลโก้หัว Dashboard/topbar admin), `texttopbar.png` (แบนเนอร์ topbar พนักงาน), `Home.png` / `Megaphone.png` (ไอคอน bottom nav), `iconsleep.png` (โลโก้ drawer), `iconmegaphone.png` (หัวหน้าประกาศ), `iconcheck.png` (หัวหน้าประวัติ), `star-profile.png`, `iconadmin.png` (โลโก้ sidebar admin), `iconmove.webp` (การ์ตูนเคลื่อนไหวหน้า login — สร้างจาก `iconmove.gif` ลบพื้นหลังด้วย flood fill จากขอบให้โปร่งใส), `loginmain.png` (รูปกดเข้าสู่ระบบหน้า login), `linkcard.png` (หัวข้อขั้นผูกบัญชีครั้งแรก)
+`icon.png` (โลโก้หัว Dashboard/topbar admin), `texttopbar.png` (แบนเนอร์ topbar พนักงาน), `Home.png` / `Megaphone.png` (ไอคอน bottom nav), `iconsleep.png` (โลโก้ drawer), `iconmegaphone.png` (หัวหน้าประกาศ), `iconcheck.png` (หัวหน้าประวัติ), `star-profile.png`, `iconadmin.png` (โลโก้ sidebar admin), `iconmove.webp` (การ์ตูนเคลื่อนไหวหน้า login — สร้างจาก `iconmove.gif` ลบพื้นหลังด้วย flood fill จากขอบให้โปร่งใส), `loginmain.png` (รูปกดเข้าสู่ระบบหน้า login), `linkcard.png` (พื้นขั้นผูกบัญชี — ช่องรหัสซ้อนทับ), `logocheck.png` (ไอคอนประวัติใน bottom nav), `iconplus.png` (ไอคอนเมนู sidebar admin), `iconcry.png` (รูปใน popup "แต้มไม่พอ!"), `testtext.png` / `textreward.png` / `texthistory.png` (รูปข้อความในกล่องคำพูดหน้าหลัก/ประกาศ/ประวัติ), `pointchip.png` (พื้นชิปแต้มคงเหลือ — ตัวเลขซ้อนทับ)
 
 ### อนิเมชัน (index.css)
 - **`.special-card`** — การ์ดรางวัลพิเศษ แสงกวาดขอบ (conic-gradient + `@property --angle`)
-- **`.neon-glow`** — ชิปแต้มเรืองนีออนชมพูฟุ้ง (กระพริบ)
+- **`.neon-glow`** — ชิปแต้มเรืองนีออนชมพูฟุ้ง (กระพริบ, box-shadow)
+- **`.img-glow`** — แสงเรืองรอบ **รูปข้อความ** (PNG โปร่งใส) ด้วย `filter: drop-shadow` เรืองตามรูปทรงตัวอักษร (ใช้กับ speech bubble รูป mobile)
 - **`.shine-sweep`** — แสงขาวกวาดผ่านการ์ด (การ์ด "แต้มที่ใช้ไป" + gradient เรเดียลทอง)
 - **popup** — เปิด/ปิดมีอนิเมชัน ใช้รูปแบบ **closing-state** (หน่วง unmount ด้วย setTimeout ให้อนิเมชันเล่นจบ):
   - popup แต้มที่ได้รับ = jelly in / jelly out (`.modal-jelly` / `.modal-jelly-out`)
-  - ยืนยันการแลก + แต้มไม่พอ = slide up in/out (`.modal-slideup` / `.modal-slideup-out`, ขอบหนา 4px)
+  - ยืนยันการแลก + แต้มไม่พอ = slide up in/out (`.modal-slideup` / `.modal-slideup-out`, ขอบหนา 4px, ฟอนต์ Itim ทั้งการ์ดรวมปุ่ม)
   - overlay จางเข้า/ออก (`.modal-overlay` / `.overlay-out`)
   - ฟอร์ม/โมดัลหน้า admin (เพิ่มประกาศ, เพิ่ม/แก้ไขพนักงาน) = **slide down** เข้า/ออก (`.slidedown-in` 0.5s / `.slidedown-out` 0.28s) + closing-state หน่วง 280ms
 - **เปลี่ยนหน้า (route transition)** — `.page-enter` (Slide Left) ที่ wrapper ของ `<Outlet>` ใน Layout โดยใส่ `key={location.pathname}` ให้ remount เล่นอนิเมชันใหม่; `.main` ตั้ง `overflow-x: clip` กันเนื้อหาสไลด์ล้น
+- **drawer (มือถือ)** — สไลด์ด้วย `transform: translateX()` (ไม่ใช่ `right`) + `will-change: transform` เพื่อให้ลื่นบน GPU ไม่ทำ reflow (กันกระตุกบนมือถืออ่อน)
 
 ### แจ้งเตือน / localStorage (ฝั่งพนักงาน)
 - **Badge ประกาศใหม่** — ที่ไอคอน 📢 ใน bottom nav แสดงจำนวนประกาศที่ยังไม่อ่าน (เกิน 9 = "9+"); เคลียร์เมื่อเข้าหน้าประกาศ

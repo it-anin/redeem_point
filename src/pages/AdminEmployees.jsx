@@ -315,7 +315,7 @@ export default function AdminEmployees() {
                 <tr key={emp.key}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div className="avatar" style={{ width: 32, height: 32, fontSize: 12 }}>{emp.name?.[0]}</div>
+                      <img src="/star-profile.png" alt="" style={{ width: 32, height: 32, objectFit: 'contain', flexShrink: 0 }} />
                       <div>
                         <div style={{ fontWeight: 700 }}>{emp.name}</div>
                         {!emp.pending && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{emp.email}</div>}
