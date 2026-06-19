@@ -26,7 +26,7 @@ export default function Admin() {
   const topEmployees = [...employees]
     .filter(e => e.role !== 'admin')
     .sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
-    .slice(0, 5)
+    .slice(0, 10)
 
   if (loading) return <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>กำลังโหลด...</div>
 

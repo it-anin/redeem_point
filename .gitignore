@@ -4,6 +4,9 @@
 # production build
 /build
 
+# firebase deploy cache (อย่า commit)
+/.firebase
+
 # environment (มี key/secret — อย่า commit; ใช้ .env.example เป็น template)
 .env
 .env.local

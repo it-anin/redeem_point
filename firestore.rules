@@ -36,10 +36,11 @@ service cloud.firestore {
     // ไทย = UTC+7 คงที่ ไม่มี DST → แปลงด้วย +7 ชั่วโมง; ถ้าไม่มี doc หรือปิดล็อก = เปิดตลอด
     function isRedeemOpen() {
       return !exists(/databases/$(database)/documents/settings/redeem)
-        || redeemCfg().enabled != true
-        || ( redeemDateOk()
-          && ( ((request.time.hours() + 7) % 24) * 60 + request.time.minutes() )
-               >= (redeemCfg().hour * 60 + redeemCfg().minute) );
+        || ( redeemCfg().open != false                 // master switch: ถ้า open == false = ปิดทั้งหมด
+          && ( redeemCfg().enabled != true
+            || ( redeemDateOk()
+              && ( ((request.time.hours() + 7) % 24) * 60 + request.time.minutes() )
+                   >= (redeemCfg().hour * 60 + redeemCfg().minute) ) ) );
     }
 
     // พนักงานที่เข้าระบบแล้ว (doc id = อีเมล Google)

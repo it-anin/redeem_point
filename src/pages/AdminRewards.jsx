@@ -25,7 +25,7 @@ export default function AdminRewards() {
   const [msg, setMsg] = useState({ type: '', text: '' })
   const formRef = useRef(null)
   // ตั้งเวลาเปิดให้พนักงานแลก (เก็บใน settings/redeem)
-  const [redeemCfg, setRedeemCfg] = useState({ enabled: true, hour: 15, minute: 0, dateY: 0, dateM: 0, dateD: 0 })
+  const [redeemCfg, setRedeemCfg] = useState({ open: true, enabled: true, hour: 15, minute: 0, dateY: 0, dateM: 0, dateD: 0 })
   const [savingCfg, setSavingCfg] = useState(false)
 
   const scrollToForm = () => {
@@ -52,6 +52,7 @@ export default function AdminRewards() {
     setMsg({ type: '', text: '' })
     try {
       await setDoc(doc(db, 'settings', 'redeem'), {
+        open: redeemCfg.open !== false,
         enabled: !!redeemCfg.enabled,
         hour: Number(redeemCfg.hour) || 0,
         minute: Number(redeemCfg.minute) || 0,
@@ -63,6 +64,23 @@ export default function AdminRewards() {
       setMsg({ type: 'success', text: 'บันทึกเวลาเปิดแลกเรียบร้อย!' })
     } catch (err) {
       setMsg({ type: 'error', text: err.message })
+    } finally {
+      setSavingCfg(false)
+    }
+  }
+
+  // ปุ่มเปิด/ปิดการแลกทันที (master switch) — บันทึกเข้า Firestore เลย
+  const toggleRedeemOpen = async () => {
+    const newOpen = !(redeemCfg.open !== false) // สลับสถานะปัจจุบัน
+    setRedeemCfg(c => ({ ...c, open: newOpen }))
+    setSavingCfg(true)
+    setMsg({ type: '', text: '' })
+    try {
+      await setDoc(doc(db, 'settings', 'redeem'), { open: newOpen, updatedAt: new Date() }, { merge: true })
+      setMsg({ type: 'success', text: newOpen ? 'เปิดให้พนักงานแลกของรางวัลแล้ว' : 'ปิดการแลกของรางวัลแล้ว (พนักงานแลกไม่ได้)' })
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message })
+      setRedeemCfg(c => ({ ...c, open: !newOpen })) // ย้อนกลับถ้าบันทึกพลาด
     } finally {
       setSavingCfg(false)
     }
@@ -161,8 +179,30 @@ export default function AdminRewards() {
         </div>
       )}
 
+      {/* เปิด/ปิดการแลกทันที (master switch) */}
+      <div className="card" style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>
+            สถานะการแลกของรางวัล: {redeemCfg.open !== false
+              ? <span style={{ color: '#059669' }}>🟢 เปิดอยู่</span>
+              : <span style={{ color: '#DC2626' }}>🔴 ปิดอยู่</span>}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            ปิดแล้วพนักงานจะแลกไม่ได้ทันที ไม่ว่าจะถึงเวลาเปิดหรือไม่
+          </div>
+        </div>
+        <button
+          className={redeemCfg.open !== false ? 'btn-danger' : 'btn-primary'}
+          style={{ padding: '11px 24px', fontSize: 14, fontWeight: 800 }}
+          onClick={toggleRedeemOpen}
+          disabled={savingCfg}
+        >
+          {redeemCfg.open !== false ? '🔴 ปิดการแลก' : '🟢 เปิดให้แลก'}
+        </button>
+      </div>
+
       {/* ตั้งเวลาเปิดให้พนักงานแลกรางวัล */}
-      <div className="card" style={{ marginBottom: 24 }}>
+      <div className="card" style={{ marginBottom: 24, opacity: redeemCfg.open !== false ? 1 : 0.55 }}>
         <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 6 }}>⏰ เวลาเปิดให้พนักงานแลกรางวัล</div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
           ก่อนถึงเวลานี้ ปุ่ม "แลกเลย!" ของพนักงานจะกดไม่ได้ (บังคับทั้งฝั่งแอปและเซิร์ฟเวอร์) — อิงเวลาประเทศไทย

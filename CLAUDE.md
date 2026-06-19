@@ -42,6 +42,13 @@ REACT_APP_CLOUDINARY_UPLOAD_PRESET=...   # ต้องเป็น Unsigned pre
 3. **Cloudinary** → unsigned upload preset + เปิด "Allow delivery of PDF and ZIP files" (สำหรับ PDF ประกาศ)
 4. **Bootstrap admin คนแรก** → สร้าง doc ใน `employees` ด้วยมือ (Document ID = อีเมล, role = `admin`)
 
+### Deploy (Firebase Hosting)
+- โปรเจกต์: `reward-point-2b56d` (เจ้าของ Console: mnswysk@gmail.com) — config ใน `firebase.json` + `.firebaserc`
+- Hosting site = **`anin-reward-point`** → URL `https://anin-reward-point.web.app`
+- `firebase.json` ผูก `firestore.rules` ไว้ → deploy เว็บ+rules พร้อมกัน, SPA rewrite ทุก path → `/index.html`
+- คำสั่ง: `npm run build` → `firebase deploy --only "hosting,firestore:rules"` (PowerShell ต้องใส่ quote รอบ list)
+- ⚠️ โดเมน site เพิ่มเติม (`anin-reward-point.web.app`) ต้องเพิ่มใน **Auth → Authorized domains** เอง ไม่งั้น Google login ไม่ผ่าน
+
 ---
 
 ## โครงสร้างไฟล์
@@ -99,7 +106,7 @@ src/
 | `transactions` | auto | employeeId(=อีเมล), employeeName, rewardId, rewardName, pointsUsed, status, approval, proofUrl, note, createdAt |
 | `announcements` | auto | title, body, pdfUrl, pdfName, createdAt |
 | `auditLogs` | auto | action, txId, employeeName, rewardName, detail, by, at (เก็บถาวร แก้/ลบไม่ได้) |
-| `settings` | `redeem` | enabled, hour, minute, dateY/dateM/dateD (เวลา/วันเปิดให้แลก — admin ตั้งในหน้าจัดการรางวัล) |
+| `settings` | `redeem` | open(เปิด/ปิดการแลก master), enabled(ล็อกเวลา), hour, minute, dateY/dateM/dateD (admin ตั้งในหน้าจัดการรางวัล) |
 
 ### ⚠️ ข้อตกลงเครื่องหมาย `pointsUsed` (สำคัญมาก)
 - **แลกรางวัล** → `pointsUsed` เป็น **บวก** (ใช้แต้มไป)
@@ -132,8 +139,9 @@ src/
 - รางวัลแยก 2 กลุ่ม: **🌟 รางวัลพิเศษ** (badge pulse) / **🎁 รางวัลปกติ**
 - การ์ดรางวัล (ฟอนต์ Itim ทั้งการ์ดรวมปุ่มแลก): รูป/emoji, ป้ายสต็อก (ขาว), ป้ายประเภท, รายละเอียด, ราคาแต้ม, ปุ่มแลก
   - แต้มไม่พอ → ปุ่ม "แต้มไม่พอ!" กดแล้วเด้ง popup "แต้มไม่พอ!" (รูป `iconcry.png`, ฟอนต์ Itim ทั้งการ์ดรวมปุ่ม)
+  - **admin ปิดการแลก** (`open: false`) → ปุ่ม disable แสดง "🔴 งดแลกชั่วคราว"
   - **ยังไม่ถึงเวลาเปิดแลก** → ปุ่ม disable แสดง "⏰ เปิดแลก HH:MM น." (หรือ DD/MM HH:MM ถ้ากำหนดวัน) — อ่านค่าจาก `settings/redeem`, เช็คทุก 30 วิ เปิดเองตอนถึงเวลา
-  - **มีคนแลกตัดหน้า (ของหมดพอดี)** → เด้ง popup "ไม่ทันจ้า! มีคนตัดหน้า" (รูป `iconlol.png`, modal-slideup) — ดักจาก error `'ของหมดแล้ว'` ใน transaction
+  - **หมดแล้ว / มีคนแลกตัดหน้า** → ปุ่ม "หมดแล้ว" กดได้ (ไม่ disable) เด้ง popup "ไม่ทันจ้า! มีคนตัดหน้า" (รูป `iconlol.png`, modal-slideup) — ดักจาก error `'ของหมดแล้ว'` ใน transaction ด้วย
   - รางวัล `requireProof` → ต้องแนบรูปหลักฐาน (Cloudinary) ก่อนยืนยัน
 - แลกแล้ว → หักแต้ม + ลดสต็อก + สร้าง transaction (`approval: 'รออนุมัติ'`) **ใน `runTransaction` เดียว (atomic)** ด้วย `tx.set` — กันกรณีแต้มหายแต่ไม่มีประวัติ
 - popup แจ้งเตือนเมื่อ admin อนุมัติ (จำด้วย localStorage `approvedSeen_<email>`)
@@ -163,7 +171,7 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - หมวด "มุมมองพนักงาน" → 📱 พนักงาน (แสดงผล) → `/admin/preview`
 
 ### Admin.jsx (ภาพรวม)
-รายการล่าสุด + อันดับแต้มสะสม (กรอง admin ออก, โชว์ 5 คน) + สต็อกรางวัล (เอาการ์ดสถิติ stat-card ออกแล้ว)
+รายการล่าสุด + อันดับแต้มสะสม (กรอง admin ออก, โชว์ 10 คน) + สต็อกรางวัล (เอาการ์ดสถิติ stat-card ออกแล้ว)
 
 > หน้า admin ทุกหน้า **เอาหัวข้อ (page-title/page-sub) ออกแล้ว** — หน้าที่มีปุ่ม (จัดการพนักงาน/รางวัล/ประกาศ) เก็บปุ่มไว้ชิดขวาด้วย `<div />` ว่างใน page-header
 
@@ -172,14 +180,16 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - ตารางรวม "เข้าระบบแล้ว" + "รอผูกบัญชี" — **แยกกลุ่มตามแผนก** (Sale / Warehouse / Office / อื่นๆ) มีแถวหัวกลุ่ม + จำนวนคน; เทียบแผนกแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ (`groupOfDept`)
   - `DEPT_GROUPS` (module-level): **Sale** = Pharmarcist / Pharmarcist Assistant / Pharmarcist Mobile / Sale Admin · **Warehouse** = Outbound / Inbound / Inventory / Warehouse Manager / Packing · **Office** = IT Support / Accountant / Purchase / Procurement Manager / HR&Admin
 - ปุ่มเดียว **✏️ แก้ไข** → modal (slide down เปิด/ปิด) แก้ **ชื่อ/แผนก/สิทธิ์** + **ปรับแต้ม** (ใส่ − เพื่อหัก, บันทึกประวัติ `transactions`); พนักงานรอผูกบัญชีแก้ "แต้มเริ่มต้น" ตรงๆ + **ลบพนักงาน**
-- **♻️ รีเซ็ตแต้มทั้งระบบ** — ปุ่มสีแดง + modal ยืนยันต้องพิมพ์ `RESET` → ตั้ง `points: 0` ทุกคนใน `employees` + `pendingEmployees` (เขียนแบบ `writeBatch` ครั้งละ 400) เก็บประวัติ `transactions` ไว้ + บันทึก `auditLogs` (`action: reset_points`)
+- **🔄 เปลี่ยนอีเมล** (เฉพาะคนที่เข้าระบบแล้ว) — ปลดอีเมลออกแต่คงรหัส/ข้อมูล/แต้ม → ย้ายกลับเป็น `pendingEmployees/{รหัสเดิม}` แล้วลบ `employees/{อีเมลเก่า}`; พนักงานล็อกอิน Gmail ใหม่ + กรอกรหัสเดิม → ผูกอีเมลใหม่
+- **♻️ รีเซ็ตแต้มทั้งระบบ** — ปุ่มสีแดง + modal ยืนยันต้องพิมพ์ `RESET` → ตั้ง `points: 0` ทุกคนใน `employees` + `pendingEmployees` **และลบ `transactions` ทั้งหมด** (เริ่มนับใหม่, `writeBatch` ครั้งละ 400) + บันทึก `auditLogs` (`action: reset_points`)
 - ช่องค้นหา + หัวตาราง (`thead`) พื้นหลังขาว (inline เฉพาะหน้านี้)
 
 ### AdminRewards.jsx (จัดการรางวัล)
 - เพิ่ม/แก้/ลบ รางวัล — ประเภท (ปกติ/พิเศษ), รูปจาก **URL** (รองรับแปลงลิงก์ Google Drive), ไม่จำกัดจำนวน, ต้องแนบหลักฐาน
 - เรียงแยก 2 กลุ่ม (พิเศษ/ปกติ) เหมือนฝั่งมือถือ
 - กด "แก้ไข" → เลื่อนขึ้นไปที่ฟอร์มอัตโนมัติ
-- **การ์ด "⏰ เวลาเปิดให้พนักงานแลกรางวัล"** — ตั้งเปิด/ปิดล็อก + เวลา (HH:MM) + เฉพาะวันที่ (เว้นว่าง=ทุกวัน) → บันทึกลง `settings/redeem`; ทั้งหน้าพนักงานและ Firestore Rules อ่านค่านี้
+- **การ์ด "สถานะการแลกของรางวัล"** — ปุ่ม **เปิด/ปิดการแลกทันที** (master switch, field `open`) บันทึกลง `settings/redeem` เลย; ปิดแล้วพนักงานแลกไม่ได้ทันทีไม่ว่าถึงเวลาหรือไม่
+- **การ์ด "⏰ เวลาเปิดให้พนักงานแลกรางวัล"** — ตั้งเปิด/ปิดล็อกเวลา + เวลา (HH:MM) + เฉพาะวันที่ (เว้นว่าง=ทุกวัน) → บันทึกลง `settings/redeem`; ทั้งหน้าพนักงานและ Firestore Rules อ่านค่านี้
 
 ### AdminApprovals.jsx (อนุมัติของรางวัล)
 - รายการที่พนักงานแลกเข้ามา (มี `rewardId`) — กรองตามสถานะ
@@ -189,8 +199,10 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - โพสต์/ลบประกาศ + แนบ **PDF หน้าเดียว** (เช็คด้วย pdf-lib → อัป Cloudinary)
 
 ### AdminHistory.jsx (ประวัติทั้งหมด)
-- ทุกธุรกรรม — **แก้ไข** (ปรับยอดพนักงานตามส่วนต่าง) / **ลบ** (คืนแต้ม+สต็อก)
-- ทุกการแก้/ลบบันทึกลง **auditLogs** (ดูได้ในปุ่ม "บันทึกการแก้ไข"); พาเนล log รองรับ `action: reset_points` (แสดง "♻️ รีเซ็ตแต้มทั้งระบบ" badge แดง)
+- **แก้ไข** — แก้ได้แค่ **ชื่อรางวัล + รายละเอียด** (เช่นของหมด/เปลี่ยนเป็นรายการอื่น) **ไม่กระทบแต้ม** (กัน admin แอบปรับแต้มผ่านหน้านี้ — ปรับแต้มทำที่หน้าจัดการพนักงานเท่านั้น)
+- **➕ เพิ่มรายการ** — บันทึกประวัติแลกให้พนักงาน (เลือกจาก `employees` ที่ผูกบัญชีแล้ว) **ไม่หักแต้มจริง** (`recordOnly: true`, `pointsUsed` เก็บไว้ดูเฉยๆ); ลบรายการ recordOnly จะไม่คืนแต้ม
+- **ลบ** — รายการแลกจริงคืนแต้ม+สต็อก; รายการ recordOnly ไม่คืนแต้ม
+- ทุกการแก้/เพิ่ม/ลบบันทึกลง **auditLogs** (ปุ่ม "บันทึกการแก้ไข"); พาเนล log รองรับ `action: reset_points` (badge "♻️ รีเซ็ตแต้มทั้งระบบ")
 
 ### MobilePreview.jsx (พนักงาน (แสดงผล))
 แสดงหน้าพนักงานในกรอบมือถือ (iframe + `?preview=employee` บังคับ layout/เมนูแบบพนักงาน)
@@ -242,4 +254,4 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - `auditLogs` — admin อ่าน/สร้าง; แก้/ลบไม่ได้ (immutable)
 - `settings` — อ่านได้ทุกคน(ล็อกอิน); เขียนเฉพาะ admin
 - helper `isAdmin()` = doc `employees/{อีเมล}` มี role == 'admin'
-- **`isRedeemOpen()`** — เปิดแลกตามเวลา/วันที่ใน `settings/redeem` โดยอิง **เวลาเซิร์ฟเวอร์** (`request.time`, UTC → ไทย +7 ชั่วโมง, ไม่มี DST) ปลอมไม่ได้; ถ้าไม่มี doc หรือ `enabled != true` = เปิดตลอด
+- **`isRedeemOpen()`** — เปิดแลกตาม `settings/redeem`: ต้อง `open != false` (master switch) **และ** (ไม่ล็อกเวลา หรือ ผ่านวัน/เวลา) โดยอิง **เวลาเซิร์ฟเวอร์** (`request.time`, UTC → ไทย +7 ชั่วโมง, ไม่มี DST) ปลอมไม่ได้; ถ้าไม่มี doc = เปิดตลอด

@@ -19,7 +19,7 @@ async function uploadToCloudinary(file) {
 
 // ค่า default ถ้ายังโหลด settings/redeem ไม่เสร็จ (admin ตั้งค่าได้ในหน้าจัดการรางวัล)
 // dateY/dateM/dateD = 0 → ไม่จำกัดวัน (ทุกวัน); ถ้ากำหนด → เปิดเฉพาะวันนั้น
-const DEFAULT_REDEEM_CFG = { enabled: true, hour: 15, minute: 0, dateY: 0, dateM: 0, dateD: 0 }
+const DEFAULT_REDEEM_CFG = { open: true, enabled: true, hour: 15, minute: 0, dateY: 0, dateM: 0, dateD: 0 }
 
 // เปิดให้แลกตอนนี้ไหม? (เทียบเวลาเครื่อง — ฝั่ง server มี Firestore Rules กันอีกชั้น)
 function isOpenNow(cfg) {
@@ -146,7 +146,7 @@ export default function Dashboard() {
 
   const handleRedeem = async (reward) => {
     setErrMsg('')
-    if (!redeemOpen) return // ยังไม่ถึงเวลาเปิดแลก
+    if (redeemCfg.open === false || !redeemOpen) return // admin ปิดการแลก หรือยังไม่ถึงเวลา
     if ((profile?.points ?? 0) < reward.pointCost) {
       setErrMsg(`แต้มไม่พอ! ต้องการ ${reward.pointCost} แต้ม (มี ${profile.points})`)
       return
@@ -272,15 +272,23 @@ export default function Dashboard() {
       {(() => {
         const outOfStock = !r.unlimited && r.stock === 0
         const canAfford = (profile?.points ?? 0) >= r.pointCost
-        const disabled = outOfStock || !redeemOpen
+        const masterClosed = redeemCfg.open === false   // admin ปิดการแลก
+        const blocked = masterClosed || !redeemOpen      // ปิด หรือ ยังไม่ถึงเวลา
+        // กดไม่ได้เฉพาะกรณี blocked + ของยังมี; ถ้าหมดแล้ว/แต้มไม่พอ กดได้เพื่อเด้ง popup
+        const disabled = blocked && !outOfStock
         return (
           <button
             className="btn-primary"
-            style={{ width: '100%', marginTop: 12, padding: '10px', opacity: (disabled || !canAfford) ? 0.55 : 1, cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'Itim, sans-serif' }}
+            style={{ width: '100%', marginTop: 12, padding: '10px', opacity: (disabled || outOfStock || !canAfford) ? 0.55 : 1, cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'Itim, sans-serif' }}
             disabled={disabled}
-            onClick={() => { if (!canAfford) { setNotEnough(true); return } handleRedeem(r) }}
+            onClick={() => {
+              if (outOfStock) { setSoldOut(true); return }
+              if (blocked) return
+              if (!canAfford) { setNotEnough(true); return }
+              handleRedeem(r)
+            }}
           >
-            {outOfStock ? 'หมดแล้ว' : !redeemOpen ? `⏰ เปิดแลก ${fmtWhen(redeemCfg)} น.` : !canAfford ? 'แต้มไม่พอ!' : 'แลกเลย!'}
+            {outOfStock ? 'หมดแล้ว' : masterClosed ? '🔴 งดแลกชั่วคราว' : !redeemOpen ? `⏰ เปิดแลก ${fmtWhen(redeemCfg)} น.` : !canAfford ? 'แต้มไม่พอ!' : 'แลกเลย!'}
           </button>
         )
       })()}
@@ -393,7 +401,7 @@ export default function Dashboard() {
           <div className={`card ${soldOutClosing ? 'modal-slideup-out' : 'modal-slideup'}`} style={{ maxWidth: 320, width: '100%', textAlign: 'center', padding: 28 }} onClick={e => e.stopPropagation()}>
             <img src="/iconlol.png" alt="" style={{ width: 150, height: 150, objectFit: 'contain', display: 'block', margin: '0 auto 12px' }} />
             <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 25 }}>ไม่ทันจ้า! มีคนตัดหน้า</div>
-            <button className="btn-primary" style={{ width: '100%', padding: '11px' }} onClick={closeSoldOut}>เคยอม</button>
+            <button className="btn-primary" style={{ width: '100%', padding: '11px' }} onClick={closeSoldOut}>รอรอบหน้า</button>
           </div>
         </div>
       )}

@@ -122,30 +122,69 @@ export default function AdminEmployees() {
     fetchAll()
   }
 
-  // รีเซ็ตแต้มทุกคนในระบบเป็น 0 (รวม pendingEmployees) — เก็บประวัติ transactions ไว้
+  // ยกเลิกผูกบัญชี: ปลดอีเมลออก แต่คงรหัส+ข้อมูล+แต้มเดิม (ย้ายกลับเป็น pendingEmployees ด้วยรหัสเดิม)
+  // → พนักงานล็อกอิน Gmail ใหม่ + กรอกรหัสเดิม เพื่อผูกกับอีเมลใหม่
+  const unlinkEmployee = async (emp) => {
+    if (!emp.code) {
+      setErrMsg(`"${emp.name}" ไม่มีรหัสพนักงาน ยกเลิกผูกบัญชีไม่ได้ (กด ✏️ แก้ไข เพิ่มรหัสก่อน)`)
+      setTimeout(() => setErrMsg(''), 4000)
+      return
+    }
+    if (!window.confirm(
+      `ยกเลิกผูกบัญชีของ "${emp.name}"?\n\n` +
+      `• ปลดอีเมล ${emp.id} ออก\n` +
+      `• คงรหัส ${emp.code} + แต้ม ${emp.points?.toLocaleString() ?? 0} + ข้อมูลเดิมไว้\n` +
+      `• พนักงานล็อกอินด้วย Gmail ใหม่ แล้วกรอกรหัส ${emp.code} เพื่อผูกใหม่`
+    )) return
+    try {
+      await setDoc(doc(db, 'pendingEmployees', emp.code), {
+        name: emp.name ?? '',
+        code: emp.code,
+        department: emp.department ?? '',
+        points: Number(emp.points ?? 0),
+        role: emp.role ?? 'employee',
+        createdAt: new Date(),
+      })
+      await deleteDoc(doc(db, 'employees', emp.id))
+      setSuccessMsg(`ยกเลิกผูกบัญชี "${emp.name}" แล้ว — ให้ล็อกอิน Gmail ใหม่ + กรอกรหัส ${emp.code}`)
+      setTimeout(() => setSuccessMsg(''), 5000)
+      fetchAll()
+    } catch (err) {
+      setErrMsg('ยกเลิกผูกบัญชีไม่สำเร็จ: ' + err.message)
+    }
+  }
+
+  // รีเซ็ตแต้มทุกคนเป็น 0 (รวม pendingEmployees) + ลบประวัติ transactions ทั้งหมด → เริ่มนับใหม่
   const resetAllPoints = async () => {
     setResetting(true)
     setErrMsg('')
     try {
-      const [empSnap, pendSnap] = await Promise.all([
+      const [empSnap, pendSnap, txSnap] = await Promise.all([
         getDocs(collection(db, 'employees')),
         getDocs(collection(db, 'pendingEmployees')),
+        getDocs(collection(db, 'transactions')),
       ])
+      // ตั้งแต้ม = 0 ให้ทุกคน
       const refs = [
         ...empSnap.docs.map(d => doc(db, 'employees', d.id)),
         ...pendSnap.docs.map(d => doc(db, 'pendingEmployees', d.id)),
       ]
-      // เขียนเป็นชุด (batch) ครั้งละไม่เกิน 400 ops กันชน limit 500 ของ Firestore
       for (let i = 0; i < refs.length; i += 400) {
         const batch = writeBatch(db)
         refs.slice(i, i + 400).forEach(ref => batch.update(ref, { points: 0 }))
+        await batch.commit()
+      }
+      // ลบประวัติ transactions ทั้งหมด (เริ่มนับใหม่)
+      for (let i = 0; i < txSnap.docs.length; i += 400) {
+        const batch = writeBatch(db)
+        txSnap.docs.slice(i, i + 400).forEach(d => batch.delete(doc(db, 'transactions', d.id)))
         await batch.commit()
       }
       // บันทึก audit log (best-effort)
       try {
         await addDoc(collection(db, 'auditLogs'), {
           action: 'reset_points',
-          detail: `รีเซ็ตแต้มทั้งระบบเป็น 0 (${empSnap.size} พนักงาน + ${pendSnap.size} รอผูกบัญชี)`,
+          detail: `รีเซ็ตแต้มเป็น 0 (${empSnap.size} พนักงาน + ${pendSnap.size} รอผูกบัญชี) + ลบประวัติ ${txSnap.size} รายการ`,
           by: profile?.email || profile?.name || 'admin',
           at: new Date(),
         })
@@ -153,7 +192,7 @@ export default function AdminEmployees() {
       setResetModal(false)
       setResetText('')
       fetchAll()
-      setSuccessMsg(`รีเซ็ตแต้มทั้งระบบเป็น 0 เรียบร้อย (${empSnap.size + pendSnap.size} รายการ)`)
+      setSuccessMsg(`รีเซ็ตแต้ม + ล้างประวัติเรียบร้อย (แต้ม 0 ทุกคน, ลบ ${txSnap.size} รายการ)`)
       setTimeout(() => setSuccessMsg(''), 4000)
     } catch (err) {
       setErrMsg('รีเซ็ตไม่สำเร็จ: ' + err.message)
@@ -343,6 +382,15 @@ export default function AdminEmployees() {
                       >
                         ✏️ แก้ไข
                       </button>
+                      {!emp.pending && (
+                        <button
+                          className="btn-primary"
+                          style={{ padding: '6px 12px', fontSize: 12, background: 'var(--surface)', color: 'var(--primary-dark)', border: '1.5px solid var(--border)' }}
+                          onClick={() => unlinkEmployee(emp)}
+                        >
+                          🔄 เปลี่ยนอีเมล
+                        </button>
+                      )}
                       <button
                         className="btn-danger"
                         style={{ padding: '6px 12px', fontSize: 12 }}
@@ -367,10 +415,10 @@ export default function AdminEmployees() {
           <div className="card slidedown-in" style={{ maxWidth: 420, width: '100%', padding: 28 }}>
             <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 8, color: '#991B1B' }}>⚠️ รีเซ็ตแต้มทั้งระบบ</div>
             <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.7, marginBottom: 8 }}>
-              จะตั้งแต้มของ <b>พนักงานทุกคน</b> (รวมที่รอผูกบัญชี) ให้เป็น <b>0</b>
+              จะตั้งแต้มของ <b>พนักงานทุกคน</b> (รวมที่รอผูกบัญชี) ให้เป็น <b>0</b> และ <b>ลบประวัติการทำรายการทั้งหมด</b> (เริ่มนับใหม่)
             </div>
             <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '10px 14px', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 700, marginBottom: 16 }}>
-              ❗ การกระทำนี้กู้คืนไม่ได้ (ประวัติการทำรายการเดิมยังอยู่)
+              ❗ การกระทำนี้กู้คืนไม่ได้ — ประวัติทุกหน้า (รายการล่าสุด/ประวัติ/แต้มที่ได้รับ) จะหายหมด
             </div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
               พิมพ์ <b>RESET</b> เพื่อยืนยัน

@@ -14,10 +14,20 @@ export default function AdminHistory() {
   const [editTx, setEditTx] = useState(null)
   const [editEffect, setEditEffect] = useState(0) // ยอดที่กระทบพนักงาน (+ เพิ่ม / - ลด)
   const [editNote, setEditNote] = useState('')
+  const [editReward, setEditReward] = useState('') // ชื่อรางวัลของรายการ
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  // Add modal (เพิ่มรายการแลกเอง)
+  const [employees, setEmployees] = useState([])
+  const [addModal, setAddModal] = useState(false)
+  const [addForm, setAddForm] = useState({ employeeId: '', rewardName: '', points: '' })
 
-  useEffect(() => { fetchTx(); fetchLogs() }, [])
+  useEffect(() => { fetchTx(); fetchLogs(); fetchEmployees() }, [])
+
+  const fetchEmployees = async () => {
+    const snap = await getDocs(collection(db, 'employees'))
+    setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.role !== 'admin'))
+  }
 
   const fetchTx = async () => {
     const q = query(collection(db, 'transactions'), orderBy('createdAt', 'desc'))
@@ -53,6 +63,7 @@ export default function AdminHistory() {
     setEditTx(t)
     setEditEffect(-(t.pointsUsed ?? 0)) // แปลงเป็นยอดที่กระทบพนักงาน
     setEditNote(t.note ?? '')
+    setEditReward(t.rewardName ?? '')
   }
 
   const saveEdit = async () => {
@@ -76,10 +87,13 @@ export default function AdminHistory() {
         tx.update(txRef, {
           pointsUsed: -newEffect,
           note: editNote,
+          rewardName: editReward,
           editedAt: new Date(),
         })
       })
-      await writeLog('แก้ไข', editTx,
+      const rewardChanged = (editTx.rewardName ?? '') !== editReward
+      await writeLog('แก้ไข', { ...editTx, rewardName: editReward },
+        (rewardChanged ? `รางวัล "${editTx.rewardName ?? '-'}" → "${editReward}" · ` : '') +
         `แต้ม ${oldEffect.toLocaleString()} → ${newEffect.toLocaleString()}` +
         (delta !== 0 ? ` (ปรับยอดพนักงาน ${delta > 0 ? '+' : ''}${delta.toLocaleString()})` : '') +
         (editNote ? ` · โน้ต: ${editNote}` : ''))
@@ -134,6 +148,48 @@ export default function AdminHistory() {
     }
   }
 
+  // เพิ่มรายการแลกให้พนักงานเอง (admin) — หักแต้ม + สร้าง transaction แบบ atomic
+  const saveAdd = async () => {
+    const emp = employees.find(e => e.id === addForm.employeeId)
+    const name = addForm.rewardName.trim()
+    const pts = Number(addForm.points) || 0
+    if (!emp) { setMsg('⚠️ กรุณาเลือกพนักงาน'); return }
+    if (!name) { setMsg('⚠️ กรุณาใส่ชื่อรางวัล'); return }
+    setSaving(true)
+    try {
+      const txRef = doc(collection(db, 'transactions'))
+      await runTransaction(db, async (tx) => {
+        const empRef = doc(db, 'employees', emp.id)
+        const empSnap = await tx.get(empRef)
+        if (pts !== 0 && empSnap.exists()) {
+          tx.update(empRef, { points: Math.max(0, (empSnap.data().points ?? 0) - pts) })
+        }
+        tx.set(txRef, {
+          employeeId: emp.id,
+          employeeName: emp.name,
+          rewardId: null,
+          rewardName: name,
+          pointsUsed: pts,            // บวก = ใช้แต้ม (หักจากพนักงาน)
+          createdAt: new Date(),
+          status: 'สำเร็จ',
+          approval: 'อนุมัติแล้ว',     // admin เพิ่มเอง = อนุมัติเลย
+          addedByAdmin: true,
+        })
+      })
+      await writeLog('เพิ่ม', { id: txRef.id, employeeName: emp.name, rewardName: name },
+        `เพิ่มรายการแลก "${name}" (${pts.toLocaleString()} แต้ม)`)
+      setAddModal(false)
+      setAddForm({ employeeId: '', rewardName: '', points: '' })
+      setMsg('เพิ่มรายการเรียบร้อย!')
+      setTimeout(() => setMsg(''), 3000)
+      fetchTx(); fetchLogs()
+    } catch (e) {
+      setMsg('เกิดข้อผิดพลาด: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const filtered = transactions.filter(t =>
     t.employeeName?.toLowerCase().includes(search.toLowerCase()) ||
     t.rewardName?.toLowerCase().includes(search.toLowerCase())
@@ -152,7 +208,10 @@ export default function AdminHistory() {
         <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>
           พบ {filtered.length} รายการ · รวม {totalPts.toLocaleString()} แต้ม
         </div>
-        <button className="btn-primary" style={{ marginLeft: 'auto', padding: '8px 16px', fontSize: 13 }} onClick={() => setShowLogs(v => !v)}>
+        <button className="btn-primary" style={{ marginLeft: 'auto', padding: '8px 16px', fontSize: 13 }} onClick={() => { setAddForm({ employeeId: '', rewardName: '', points: '' }); setAddModal(true) }}>
+          ➕ เพิ่มรายการ
+        </button>
+        <button className="btn-primary" style={{ padding: '8px 16px', fontSize: 13 }} onClick={() => setShowLogs(v => !v)}>
           📋 บันทึกการแก้ไข ({logs.length})
         </button>
       </div>
@@ -251,7 +310,10 @@ export default function AdminHistory() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(46,31,14,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
           <div className="card" style={{ maxWidth: 400, width: '100%', padding: 28 }}>
             <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>✏️ แก้ไขรายการ</div>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>{editTx.employeeName} · 🎁 {editTx.rewardName}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>{editTx.employeeName}</div>
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>ชื่อรางวัล (เปลี่ยนได้ถ้าของหมด/เปลี่ยนรายการ)</label>
+            <input className="input" value={editReward} onChange={e => setEditReward(e.target.value)} style={{ marginBottom: 12 }} placeholder="เช่น บัตรกำนัล 200 บาท" />
 
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>แต้ม (+ เพิ่มให้พนักงาน / - หักจากพนักงาน)</label>
             <input className="input" type="number" value={editEffect} onChange={e => setEditEffect(e.target.value)} style={{ marginBottom: 12 }} placeholder="เช่น 100 หรือ -50" />
@@ -268,6 +330,45 @@ export default function AdminHistory() {
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn-danger" style={{ flex: 1 }} onClick={() => setEditTx(null)} disabled={saving}>ยกเลิก</button>
               <button className="btn-primary" style={{ flex: 1, padding: '10px' }} onClick={saveEdit} disabled={saving}>{saving ? 'กำลังบันทึก...' : 'บันทึก'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add modal — เพิ่มรายการแลกให้พนักงานเอง */}
+      {addModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(46,31,14,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div className="card" style={{ maxWidth: 400, width: '100%', padding: 28 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>➕ เพิ่มรายการแลก</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>บันทึกการแลกของรางวัลให้พนักงาน (หักแต้มให้อัตโนมัติ)</div>
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>พนักงาน *</label>
+            <select className="input" value={addForm.employeeId} onChange={e => setAddForm(f => ({ ...f, employeeId: e.target.value }))} style={{ marginBottom: 12 }}>
+              <option value="" disabled>เลือกพนักงาน</option>
+              {employees.map(e => (
+                <option key={e.id} value={e.id}>{e.name} ({e.department}) · {e.points?.toLocaleString() ?? 0} แต้ม</option>
+              ))}
+            </select>
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>ชื่อรางวัล *</label>
+            <input className="input" value={addForm.rewardName} onChange={e => setAddForm(f => ({ ...f, rewardName: e.target.value }))} style={{ marginBottom: 12 }} placeholder="เช่น บัตรกำนัล 200 บาท" />
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>แต้มที่ใช้ (หักจากพนักงาน)</label>
+            <input className="input" type="number" min={0} value={addForm.points} onChange={e => setAddForm(f => ({ ...f, points: e.target.value }))} style={{ marginBottom: 16 }} placeholder="เช่น 350 (ใส่ 0 ถ้าไม่หักแต้ม)" />
+
+            {Number(addForm.points) > 0 && addForm.employeeId && (() => {
+              const emp = employees.find(e => e.id === addForm.employeeId)
+              const newPts = Math.max(0, (emp?.points ?? 0) - Number(addForm.points))
+              return (
+                <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 13, fontWeight: 700 }}>
+                  ➖ แต้มของ {emp?.name} จะเหลือ {newPts.toLocaleString()} แต้ม
+                </div>
+              )
+            })()}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-danger" style={{ flex: 1 }} onClick={() => setAddModal(false)} disabled={saving}>ยกเลิก</button>
+              <button className="btn-primary" style={{ flex: 1, padding: '10px' }} onClick={saveAdd} disabled={saving}>{saving ? 'กำลังบันทึก...' : 'เพิ่มรายการ'}</button>
             </div>
           </div>
         </div>
