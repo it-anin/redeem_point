@@ -219,8 +219,8 @@ export default function AdminHistory() {
     .map(g => ({
       ...g,
       subtotal: g.list.reduce((s, t) => s + (t.pointsUsed ?? 0), 0),
-      // แต้มที่ใช้ไปจากการแลกรางวัลจริง (มี rewardId) เท่านั้น ไม่รวมยอดที่ admin ปรับ — ตรงกับ "แต้มที่ใช้ไป" ในหน้าประวัติของพนักงาน
-      spent: g.list.filter(t => t.rewardId).reduce((s, t) => s + (t.pointsUsed ?? 0), 0),
+      // แต้มที่ใช้ไปจากการแลกรางวัลจริง (มี rewardId) + รายการที่ admin บันทึกแทนให้ (addedByAdmin) ไม่รวมยอดที่ admin ปรับแต้มธรรมดา — ตรงกับ "แต้มที่ใช้ไป" ในหน้าประวัติของพนักงาน
+      spent: g.list.filter(t => t.rewardId || t.addedByAdmin).reduce((s, t) => s + (t.pointsUsed ?? 0), 0),
     }))
     .sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'th'))
 

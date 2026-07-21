@@ -25,8 +25,8 @@ export default function History() {
     fetch()
   }, [user.email])
 
-  // เฉพาะการแลกรางวัลเอง (มี rewardId) ไม่รวม admin ปรับแต้ม
-  const redeemed = transactions.filter(t => t.rewardId)
+  // การแลกรางวัลเอง (มี rewardId) + รายการที่ admin บันทึกแทนให้ (addedByAdmin) — ไม่รวมแค่ admin ปรับแต้ม
+  const redeemed = transactions.filter(t => t.rewardId || t.addedByAdmin)
   const totalSpent = redeemed.reduce((sum, t) => sum + (t.pointsUsed ?? 0), 0)
 
   return (
