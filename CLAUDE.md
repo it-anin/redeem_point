@@ -27,7 +27,7 @@ npm start        # dev server ที่ http://localhost:3000
 ### ไฟล์ `.env` (ต้องมี — React อ่านตอน start เท่านั้น แก้แล้วต้อง restart)
 ```
 REACT_APP_FIREBASE_API_KEY=...
-REACT_APP_FIREBASE_AUTH_DOMAIN=...
+REACT_APP_FIREBASE_AUTH_DOMAIN=anin-reward-point.web.app   # ⚠️ ต้องเป็นโดเมนที่ใช้งานจริง ไม่ใช่ *.firebaseapp.com (ดูหัวข้อ Error ท้ายไฟล์)
 REACT_APP_FIREBASE_PROJECT_ID=...
 REACT_APP_FIREBASE_STORAGE_BUCKET=...
 REACT_APP_FIREBASE_MESSAGING_SENDER_ID=...
@@ -38,9 +38,10 @@ REACT_APP_CLOUDINARY_UPLOAD_PRESET=...   # ต้องเป็น Unsigned pre
 
 ### สิ่งที่ต้องตั้งค่าฝั่ง Cloud
 1. **Firebase Auth** → เปิด Google sign-in + ใส่ domain ใน Authorized domains
-2. **Firestore Rules** → publish เนื้อหาจาก `firestore.rules`
-3. **Cloudinary** → unsigned upload preset + เปิด "Allow delivery of PDF and ZIP files" (สำหรับ PDF ประกาศ)
-4. **Bootstrap admin คนแรก** → สร้าง doc ใน `employees` ด้วยมือ (Document ID = อีเมล, role = `admin`)
+2. **Google Cloud OAuth client** → ต้องเพิ่ม redirect URI ของโดเมนจริงเอง (คนละที่กับข้อ 1!) ดูหัวข้อ **Error ที่เคยเจอ** ท้ายไฟล์
+3. **Firestore Rules** → publish เนื้อหาจาก `firestore.rules`
+4. **Cloudinary** → unsigned upload preset + เปิด "Allow delivery of PDF and ZIP files" (สำหรับ PDF ประกาศ)
+5. **Bootstrap admin คนแรก** → สร้าง doc ใน `employees` ด้วยมือ (Document ID = อีเมล, role = `admin`)
 
 ### Deploy (Firebase Hosting)
 - โปรเจกต์: `reward-point-2b56d` (เจ้าของ Console: mnswysk@gmail.com) — config ใน `firebase.json` + `.firebaserc`
@@ -48,6 +49,15 @@ REACT_APP_CLOUDINARY_UPLOAD_PRESET=...   # ต้องเป็น Unsigned pre
 - `firebase.json` ผูก `firestore.rules` ไว้ → deploy เว็บ+rules พร้อมกัน, SPA rewrite ทุก path → `/index.html`
 - คำสั่ง: `npm run build` → `firebase deploy --only "hosting,firestore:rules"` (PowerShell ต้องใส่ quote รอบ list)
 - ⚠️ โดเมน site เพิ่มเติม (`anin-reward-point.web.app`) ต้องเพิ่มใน **Auth → Authorized domains** เอง ไม่งั้น Google login ไม่ผ่าน
+- **Cache headers ใน `firebase.json`** — `**` (ทุก path → SPA rewrite เป็น index.html) ตั้ง `no-cache`, ส่วน `/static/**` (ชื่อไฟล์มี hash) ตั้ง `immutable` 1 ปี
+  - เหตุผล: ค่า default ของ Firebase Hosting คือ `max-age=3600` ทำให้มือถือค้างบันเดิลเก่าได้ถึง 1 ชม. หลัง deploy (เคยทำให้ `authDomain` เก่าค้างจน debug หลงทาง)
+  - ⚠️ Firebase จับคู่ header จาก **path ที่ร้องขอ** ไม่ใช่ไฟล์ปลายทาง → ตั้ง `source: "/index.html"` **ไม่มีผล** กับการเปิด `/` ต้องใช้ `**`
+- **ตรวจผล deploy จริงได้ด้วย curl** (อย่าเดา):
+  ```bash
+  curl -s https://anin-reward-point.web.app/ | grep -o 'main\.[a-z0-9]*\.js'          # index.html ชี้บันเดิลไหน
+  curl -s https://anin-reward-point.web.app/static/js/main.XXXX.js | grep -o 'authDomain:"[^"]*"'
+  curl -s -I https://anin-reward-point.web.app/ | grep -i cache-control
+  ```
 
 ---
 
@@ -82,14 +92,16 @@ src/
 
 ## ระบบล็อกอิน (AuthContext.jsx)
 
-- **Google sign-in อย่างเดียว** (`signInWithPopup`)
+- **Google sign-in อย่างเดียว** — ใช้ **`signInWithRedirect`** (ไม่ใช่ `signInWithPopup`) + `getRedirectResult()` ตอน mount เพื่อดักerror ที่เด้งกลับมา
+  - ⚠️ **ห้ามเปลี่ยนกลับเป็น popup** — popup ต้องใช้ `sessionStorage` ข้าม origin ซึ่ง iOS Safari (ITP) พาร์ทิชันทิ้ง → error `auth/missing-initial-state`
+  - ใช้คู่กับ `authDomain` ที่เป็น **origin เดียวกับเว็บ** เท่านั้นถึงจะทำงาน (ดูหัวข้อ Error ท้ายไฟล์)
 - จับคู่พนักงานด้วย **อีเมล** → `employees/{อีเมล}`
 - ถ้าล็อกอินแล้วยังไม่มี employee doc → เข้าสู่ขั้น **ผูกบัญชีครั้งแรก**: กรอก **รหัสพนักงาน** → ดึงข้อมูลจาก `pendingEmployees/{รหัส}` มาสร้าง `employees/{อีเมล}` แล้วลบ pending
 - `profile.role === 'admin'` → เป็นแอดมิน
 - `patchProfile()` — อัปเดตแต้มในหน้าจอทันทีหลังแลก (ไม่ต้อง refresh)
-- **redirect หลัง login เป็นแบบ declarative** — `Login.jsx` ไม่เรียก `navigate()` เองหลัง popup (จะ race กับ `onAuthStateChanged` ที่ยัง `getDoc` profile ไม่เสร็จ → เด้งกลับ login ต้องกด 2 รอบ) แต่ใช้ `if (user) return <Navigate to="/" replace />` รอจน profile พร้อมแล้วค่อยพาเข้าหน้าหลัก
+- **redirect หลัง login เป็นแบบ declarative** — `Login.jsx` ไม่เรียก `navigate()` เอง (จะ race กับ `onAuthStateChanged` ที่ยัง `getDoc` profile ไม่เสร็จ → เด้งกลับ login ต้องกด 2 รอบ) แต่ใช้ `if (user) return <Navigate to="/" replace />` รอจน profile พร้อมแล้วค่อยพาเข้าหน้าหลัก
 - **หน้า login มีตัวการ์ตูนเคลื่อนไหว** `iconmove.webp` (พื้นหลังโปร่งใส 160×160px) แทน emoji เดิม
-- **ไม่มีปุ่ม "เข้าสู่ระบบด้วย Google" แล้ว** — กดที่ **รูป `loginmain.png`** (ครอบด้วย `<button>` เพื่อโฟกัส/กดด้วยคีย์บอร์ดได้) เพื่อเรียก `signInWithPopup`; ตอนกำลังโหลดรูปจางลง + ขึ้น "กำลังเข้าสู่ระบบ..."
+- **ไม่มีปุ่ม "เข้าสู่ระบบด้วย Google" แล้ว** — กดที่ **รูป `loginmain.png`** (ครอบด้วย `<button>` เพื่อโฟกัส/กดด้วยคีย์บอร์ดได้) เพื่อเรียก `signInWithRedirect`; ตอนกำลังโหลดรูปจางลง + ขึ้น "กำลังเข้าสู่ระบบ..."
 - **ขั้นผูกบัญชีครั้งแรก** — ใช้รูป `linkcard.png` เป็นพื้น + **ช่องกรอกรหัสซ้อนทับบนรูป** (`position: absolute`, ปรับ `bottom`/`width`/`padding`/`fontSize` ให้ตรงช่องว่างในรูป); รหัสบังคับ **ตัวพิมพ์ใหญ่เสมอ** (`toUpperCase()` + `textTransform: uppercase`); **ไม่มีปุ่มยืนยัน** — กด Enter ในช่องเพื่อ submit (ขึ้น "กำลังผูกบัญชี..." ตอนโหลด) + ปุ่ม "← ใช้บัญชี Google อื่น"
 - **iconmove.webp ซ้อนทับบนการ์ด** (marginBottom ติดลบ) ให้การ์ตูนนั่งบนการ์ด
 - **ล็อกไม่ให้หน้า login เลื่อน** — `useEffect` ตั้ง `body.overflow = hidden` ตอนเข้าหน้า (คืนค่าเมื่อออก) + container `height: 100dvh; overflow: hidden`
@@ -152,7 +164,8 @@ src/
 
 ### History.jsx (ประวัติการแลก)
 - โลโก้ iconcheck.png + กล่องคำพูด
-- แสดง **เฉพาะรายการที่แลกรางวัลเอง** (มี `rewardId`) ไม่รวม admin ปรับแต้ม
+- แสดงรายการที่ **แลกรางวัลเอง (มี `rewardId`)** + **รายการที่ admin บันทึกแทนให้ (`addedByAdmin`)** — ไม่รวมแค่ admin ปรับแต้มเฉยๆ
+  - ⚠️ เดิมกรองด้วย `t.rewardId` อย่างเดียว ทำให้รายการที่ admin กด "➕ เพิ่มรายการ" (ซึ่ง `rewardId: null`) **ไม่ขึ้นในมือถือ** — ต้องกรองด้วย `t.rewardId || t.addedByAdmin`
 - การ์ด "แต้มที่ใช้ไป" + รายการพร้อม **สถานะอนุมัติ** (รออนุมัติ/อนุมัติแล้ว/ปฏิเสธ)
 
 ---
@@ -199,6 +212,9 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - โพสต์/ลบประกาศ + แนบ **PDF หน้าเดียว** (เช็คด้วย pdf-lib → อัป Cloudinary)
 
 ### AdminHistory.jsx (ประวัติทั้งหมด)
+- **จัดกลุ่มตามพนักงานแต่ละคน** (ไม่ใช่ลิสต์เรียงเวลารวมแล้ว) — เรียงชื่อ ก-ฮ (`localeCompare(…, 'th')`), รายการในกลุ่มยังเรียงล่าสุดก่อน; ตารางไม่มีคอลัมน์ "พนักงาน" แล้ว (ชื่ออยู่บนแถวหัวกลุ่ม)
+- **แถวหัวกลุ่มคลิกเปิด/ปิดได้** (`expanded` = `Set` ของ key พนักงาน) — ค่าเริ่มต้น **ปิดทั้งหมด**, มีลูกศร `▶` หมุน 90° ตอนเปิด
+- แถวหัวกลุ่มโชว์ 2 ยอด: **⭐ แต้มที่ใช้ไป** (เฉพาะ `rewardId || addedByAdmin` — ให้ตรงกับหน้า History ฝั่งพนักงาน) และ **รวมสุทธิ** (ทุกรายการรวม admin ปรับแต้ม)
 - **แก้ไข** — แก้ได้แค่ **ชื่อรางวัล + รายละเอียด** (เช่นของหมด/เปลี่ยนเป็นรายการอื่น) **ไม่กระทบแต้ม** (กัน admin แอบปรับแต้มผ่านหน้านี้ — ปรับแต้มทำที่หน้าจัดการพนักงานเท่านั้น)
 - **➕ เพิ่มรายการ** — บันทึกประวัติแลกให้พนักงาน (เลือกจาก `employees` ที่ผูกบัญชีแล้ว) **ไม่หักแต้มจริง** (`recordOnly: true`, `pointsUsed` เก็บไว้ดูเฉยๆ); ลบรายการ recordOnly จะไม่คืนแต้ม
 - **ลบ** — รายการแลกจริงคืนแต้ม+สต็อก; รายการ recordOnly ไม่คืนแต้ม
@@ -255,3 +271,37 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 - `settings` — อ่านได้ทุกคน(ล็อกอิน); เขียนเฉพาะ admin
 - helper `isAdmin()` = doc `employees/{อีเมล}` มี role == 'admin'
 - **`isRedeemOpen()`** — เปิดแลกตาม `settings/redeem`: ต้อง `open != false` (master switch) **และ** (ไม่ล็อกเวลา หรือ ผ่านวัน/เวลา) โดยอิง **เวลาเซิร์ฟเวอร์** (`request.time`, UTC → ไทย +7 ชั่วโมง, ไม่มี DST) ปลอมไม่ได้; ถ้าไม่มี doc = เปิดตลอด
+
+---
+
+## 🚨 Error ที่เคยเจอ (login Google บน iOS) — ไล่แก้ตามลำดับนี้
+
+โจทย์เดียวกันแต่ error เปลี่ยนไปเรื่อยๆ ตามที่แก้ทีละชั้น ถ้าเจอซ้ำให้ไล่ตามนี้
+
+### 1. `auth/missing-initial-state` — "Unable to process request due to missing initial state"
+- **อาการ**: iOS กด login แล้วเด้งหน้าขาวขึ้นข้อความนี้ (URL ที่แสดง = ค่า `authDomain` ที่ client ใช้อยู่ ใช้ debug ได้)
+- **สาเหตุ**: OAuth handshake ต้องใช้ `sessionStorage` — ถ้า `authDomain` เป็นคนละ origin กับเว็บ (เช่นเว็บอยู่ `anin-reward-point.web.app` แต่ `authDomain` เป็น `reward-point-2b56d.firebaseapp.com`) iOS Safari (ITP) จะพาร์ทิชัน storage ทิ้ง
+- **แก้**: (ก) เปลี่ยนเป็น `signInWithRedirect` **และ** (ข) ตั้ง `REACT_APP_FIREBASE_AUTH_DOMAIN` = โดเมนเว็บจริง → **ต้องทำทั้งคู่** ทำอย่างเดียวไม่พอ
+
+### 2. ยัง error เดิมหลังแก้แล้ว = **cache**
+- **เช็คก่อนสรุป**: ถ้า URL ในหน้า error ยังเป็นโดเมนเก่า ทั้งที่ `grep` ในบันเดิลที่ deploy แล้วไม่เจอสตริงนั้นเลย → แปลว่า **เครื่องรันไฟล์เก่าค้าง** ไม่ใช่โค้ดผิด
+- **แก้**: ตั้ง cache headers ใน `firebase.json` (ดูหัวข้อ Deploy) + ให้ผู้ใช้ล้าง cache หรือเปิดด้วย `?v=2`
+- **บทเรียน**: ตรวจของจริงด้วย `curl` ก่อนเดา — เทียบ 3 อย่าง: index.html ชี้บันเดิลไหน / บันเดิลนั้นมีค่าอะไร / cache-control เป็นอะไร
+
+### 3. `Error 400: redirect_uri_mismatch`
+- **อาการ**: ไปถึงหน้า Google ได้แล้ว (แปลว่าข้อ 1-2 ผ่านแล้ว) แต่ Google ปฏิเสธ
+- **สาเหตุ**: **Firebase Authorized domains กับ Google Cloud OAuth redirect URIs เป็นคนละที่กัน** โดเมน default ถูกลงทะเบียนอัตโนมัติ แต่ hosting site เสริมต้องเพิ่มเอง
+- **แก้**: [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials?project=reward-point-2b56d) → OAuth 2.0 Client IDs → Web client → เพิ่ม
+  - **Authorized redirect URIs** = `https://anin-reward-point.web.app/__/auth/handler` ← ตัวที่แก้ error
+  - **Authorized JavaScript origins** = `https://anin-reward-point.web.app` (โดเมนล้วน)
+  - ⚠️ อย่าลบของเดิม, รอ ~5 นาทีให้ Google propagate (อาจนานถึงหลักชั่วโมง — รอก่อน อย่าแก้ค่าซ้ำไปมา)
+- **`Invalid Origin: URIs must not contain a path`** = ใส่ผิดช่อง — เอา URI ที่มี `/__/auth/handler` ไปใส่ในช่อง JavaScript origins (ซึ่งห้ามมี path) ต้องใส่ในช่อง redirect URIs
+
+### เช็กลิสต์ไล่ปัญหา login (ทำได้เองด้วย CLI)
+```bash
+curl -s https://anin-reward-point.web.app/ | grep -o 'main\.[a-z0-9]*\.js'   # บันเดิลที่เสิร์ฟจริง
+curl -s .../static/js/main.XXXX.js | grep -o 'authDomain:"[^"]*"'            # authDomain ที่ใช้จริง
+curl -s https://anin-reward-point.web.app/__/auth/handler | head -c 200      # ต้องเป็น fireauth.oauthhelper ไม่ใช่ index.html
+curl -s -o /dev/null -w "%{http_code}" https://reward-point-2b56d.web.app/   # มีสำเนาเก่าค้างที่ default site ไหม (404 = ไม่มี)
+```
+ส่วนที่ **ตรวจผ่าน CLI ไม่ได้** ต้องเปิด Console ดูเอง: Firebase Authorized domains, Google Cloud OAuth client
