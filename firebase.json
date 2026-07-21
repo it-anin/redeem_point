@@ -12,6 +12,22 @@
         "source": "**",
         "destination": "/index.html"
       }
+    ],
+    "headers": [
+      {
+        "//": "ทุก path (SPA rewrite → index.html) ห้าม cache — ไม่งั้นมือถือค้างบันเดิลเก่า (เคยทำให้ authDomain เดิมค้างจน login ไม่ได้)",
+        "source": "**",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        ]
+      },
+      {
+        "//": "ไฟล์ static มี hash ในชื่อ → cache ยาวได้ปลอดภัย",
+        "source": "/static/**",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        ]
+      }
     ]
   },
   "firestore": {
