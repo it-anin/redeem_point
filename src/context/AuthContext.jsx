@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth'
+import { onAuthStateChanged, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut } from 'firebase/auth'
 import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 
@@ -14,6 +14,10 @@ export function AuthProvider({ children }) {
   const [authError, setAuthError] = useState('')     // ข้อความแจ้งเตือนตอนล็อกอินไม่ผ่าน
 
   useEffect(() => {
+    // ตรวจผลลัพธ์ signInWithRedirect (เผื่อ redirect กลับมาแล้ว error เช่น ถูกยกเลิก/เน็ตหลุด)
+    getRedirectResult(auth).catch(() => {
+      setAuthError('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+    })
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // จับคู่พนักงานด้วยอีเมล (doc id ของ employees = อีเมล)
@@ -41,7 +45,9 @@ export function AuthProvider({ children }) {
 
   const loginWithGoogle = async () => {
     setAuthError('')
-    await signInWithPopup(auth, googleProvider)
+    // ใช้ redirect แทน popup — popup พึ่ง sessionStorage ข้าม origin (เว็บ ↔ accounts.google.com)
+    // ซึ่งโดน iOS Safari (ITP) พาร์ทิชัน/บล็อกจนเกิด "missing initial state" error
+    await signInWithRedirect(auth, googleProvider)
   }
 
   // ผูกบัญชี Google เข้ากับรหัสพนักงาน (ทำครั้งแรกครั้งเดียว)

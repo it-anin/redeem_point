@@ -20,12 +20,9 @@ export default function Login() {
     setLoading(true)
     try {
       await loginWithGoogle()
-      // ไม่ navigate เอง — รอ AuthContext โหลด profile เสร็จแล้วค่อย redirect (ดู Navigate ด้านล่าง)
-    } catch (err) {
-      if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
-        setError('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
-      }
-    } finally {
+      // signInWithRedirect พาออกจากหน้าไปเลย — ไม่ navigate เอง รอกลับมาแล้ว AuthContext/getRedirectResult จัดการต่อ
+    } catch {
+      setError('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
       setLoading(false)
     }
   }

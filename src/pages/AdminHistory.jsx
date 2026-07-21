@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { collection, query, orderBy, getDocs, doc, runTransaction, addDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -21,6 +21,15 @@ export default function AdminHistory() {
   const [employees, setEmployees] = useState([])
   const [addModal, setAddModal] = useState(false)
   const [addForm, setAddForm] = useState({ employeeId: '', rewardName: '', points: '' })
+  // เก็บ key พนักงานที่ "เปิด" ดูรายการแลกอยู่ (คลิกชื่อเพื่อเปิด/ปิด)
+  const [expanded, setExpanded] = useState(new Set())
+  const toggleExpand = (key) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
 
   useEffect(() => { fetchTx(); fetchLogs(); fetchEmployees() }, [])
 
@@ -198,6 +207,23 @@ export default function AdminHistory() {
   const totalPts = filtered.reduce((s, t) => s + (t.pointsUsed ?? 0), 0)
   const delta = Number(editEffect) - (-(editTx?.pointsUsed ?? 0))
 
+  // แยกประวัติเป็นกลุ่มตามพนักงานแต่ละคน (เรียงชื่อ ก-ฮ, รายการในกลุ่มยังเรียงล่าสุดก่อนตามเดิม)
+  const grouped = Object.values(
+    filtered.reduce((acc, t) => {
+      const key = t.employeeId ?? t.employeeName ?? '-'
+      if (!acc[key]) acc[key] = { key, employeeName: t.employeeName ?? '-', list: [] }
+      acc[key].list.push(t)
+      return acc
+    }, {})
+  )
+    .map(g => ({
+      ...g,
+      subtotal: g.list.reduce((s, t) => s + (t.pointsUsed ?? 0), 0),
+      // แต้มที่ใช้ไปจากการแลกรางวัลจริง (มี rewardId) เท่านั้น ไม่รวมยอดที่ admin ปรับ — ตรงกับ "แต้มที่ใช้ไป" ในหน้าประวัติของพนักงาน
+      spent: g.list.filter(t => t.rewardId).reduce((s, t) => s + (t.pointsUsed ?? 0), 0),
+    }))
+    .sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'th'))
+
   return (
     <>
 
@@ -256,7 +282,6 @@ export default function AdminHistory() {
           <table>
             <thead>
               <tr>
-                <th>พนักงาน</th>
                 <th>รางวัล / รายละเอียด</th>
                 <th style={{ textAlign: 'right' }}>เพิ่ม/ลดแต้ม</th>
                 <th>วันที่</th>
@@ -266,40 +291,59 @@ export default function AdminHistory() {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>ไม่พบรายการ</td></tr>
-              ) : filtered.map(t => (
-                <tr key={t.id}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div className="avatar" style={{ width: 30, height: 30, fontSize: 11 }}>{t.employeeName?.[0]}</div>
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>{t.employeeName}</span>
-                    </div>
-                  </td>
-                  <td style={{ fontSize: 13 }}>
-                    🎁 {t.rewardId
-                      ? `แลกแต้ม ${t.rewardName}`
-                      : (t.rewardName === 'ปรับแต้มโดย Admin' ? 'เพิ่มแต้มโดย Admin' : t.rewardName)}
-                    {t.note && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>📝 {t.note}</div>}
-                  </td>
-                  <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--primary-dark)' }}>
-                    {t.pointsUsed > 0 ? `-${t.pointsUsed?.toLocaleString()}` : `+${Math.abs(t.pointsUsed ?? 0).toLocaleString()}`}
-                  </td>
-                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    {t.createdAt?.toDate?.()?.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) ?? '-'}
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <span className={`badge ${t.status === 'สำเร็จ' ? 'badge-success' : t.status === 'เพิ่มแต้ม' ? 'badge-warn' : 'badge-success'}`}>
-                      {t.status}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                      <button className="btn-primary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => openEdit(t)}>✏️ แก้ไข</button>
-                      <button className="btn-danger" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => deleteTx(t)}>🗑️ ลบ</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>ไม่พบรายการ</td></tr>
+              ) : grouped.map(g => {
+                const isOpen = expanded.has(g.key)
+                return (
+                <Fragment key={g.key}>
+                  <tr onClick={() => toggleExpand(g.key)} style={{ cursor: 'pointer' }}>
+                    <td colSpan={5} style={{ background: 'var(--bg)', padding: '10px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s', display: 'inline-block', width: 12 }}>▶</span>
+                        <div className="avatar" style={{ width: 26, height: 26, fontSize: 11, flexShrink: 0 }}>{g.employeeName?.[0]}</div>
+                        <span style={{ fontWeight: 800, color: 'var(--primary-dark)', fontSize: 13 }}>{g.employeeName}</span>
+                        <span style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: 12 }}>({g.list.length} รายการ)</span>
+                        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--primary-dark)' }}>
+                            ⭐ แต้มที่ใช้ไป {g.spent.toLocaleString()}
+                          </span>
+                          <span style={{ fontWeight: 700, fontSize: 12, color: g.subtotal > 0 ? 'var(--text-muted)' : '#065F46' }}>
+                            รวมสุทธิ {g.subtotal > 0 ? `-${g.subtotal.toLocaleString()}` : `+${Math.abs(g.subtotal).toLocaleString()}`}
+                          </span>
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                  {isOpen && g.list.map(t => (
+                    <tr key={t.id}>
+                      <td style={{ fontSize: 13 }}>
+                        🎁 {t.rewardId
+                          ? `แลกแต้ม ${t.rewardName}`
+                          : (t.rewardName === 'ปรับแต้มโดย Admin' ? 'เพิ่มแต้มโดย Admin' : t.rewardName)}
+                        {t.note && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>📝 {t.note}</div>}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--primary-dark)' }}>
+                        {t.pointsUsed > 0 ? `-${t.pointsUsed?.toLocaleString()}` : `+${Math.abs(t.pointsUsed ?? 0).toLocaleString()}`}
+                      </td>
+                      <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        {t.createdAt?.toDate?.()?.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) ?? '-'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className={`badge ${t.status === 'สำเร็จ' ? 'badge-success' : t.status === 'เพิ่มแต้ม' ? 'badge-warn' : 'badge-success'}`}>
+                          {t.status}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                          <button className="btn-primary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => openEdit(t)}>✏️ แก้ไข</button>
+                          <button className="btn-danger" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => deleteTx(t)}>🗑️ ลบ</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
