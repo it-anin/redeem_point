@@ -300,7 +300,18 @@ export default function Dashboard() {
       <div className="page-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <img src="/icon.png" alt="" style={{ width: 100, height: 100, objectFit: 'contain', flexShrink: 0 }} />
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              // พื้นหลังใสจริง (VP9+alpha); เบราว์เซอร์ที่ไม่รองรับ (เช่น iOS Safari) จะข้ามไปเล่น mp4 พื้นขาวแทน
+              // ใส่ multiply ไว้เผื่อ fallback มา mp4 (กลืนพื้นขาวกับพื้นเว็บ) — ไม่กระทบตอนเล่น webm ที่โปร่งใสอยู่แล้ว
+              style={{ width: 130, height: 130, objectFit: 'contain', flexShrink: 0, mixBlendMode: 'multiply' }}
+            >
+              <source src="/icon2-alpha.webm" type="video/webm" />
+              <source src="/icon2.mp4" type="video/mp4" />
+            </video>
             <div className="speech-bubble">
               <img src="/testtext.png" alt="" className="img-glow" style={{ maxWidth: 130, height: 'auto', objectFit: 'contain', display: 'block' }} />
             </div>
