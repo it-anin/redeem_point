@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react'
-import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, setDoc, getDoc, writeBatch } from 'firebase/firestore'
+import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, setDoc, getDoc, writeBatch, runTransaction } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 
@@ -36,6 +36,7 @@ export default function AdminEmployees() {
   const [editForm, setEditForm] = useState({ name: '', department: '', role: 'employee', points: 0 })
   const [editDelta, setEditDelta] = useState(0)
   const [editNote, setEditNote] = useState('')
+  const [editErr, setEditErr] = useState('') // error ที่แสดงในโมดัลที่ยังเปิดอยู่ (แบนเนอร์หน้าหลักถูกโมดัลบัง)
   const [search, setSearch] = useState('')
   // โมดัลรีเซ็ตแต้มทั้งระบบ (ต้องพิมพ์ RESET ยืนยัน)
   const [resetModal, setResetModal] = useState(false)
@@ -98,6 +99,7 @@ export default function AdminEmployees() {
     setEditForm({ name: emp.name || '', department: emp.department || '', role: emp.role || 'employee', points: emp.points ?? 0 })
     setEditDelta(0)
     setEditNote('')
+    setEditErr('')
     setEditClosing(false)
   }
   // ปิดแบบหน่วง unmount ให้ slide down (ออก) เล่นจบก่อน (ตรงกับ 0.28s ใน CSS)
@@ -206,37 +208,52 @@ export default function AdminEmployees() {
     if (!editModal) return
     const emp = editModal
     const name = editForm.name.trim()
-    if (!name) { setErrMsg('กรุณากรอกชื่อ'); return }
+    if (!name) { setEditErr('กรุณากรอกชื่อ'); return }
+    setEditErr('')
     try {
       if (emp.pending) {
         // รอผูกบัญชี → แก้ฟิลด์ + แต้มเริ่มต้นได้โดยตรง (ยังไม่มีประวัติธุรกรรม)
-        await updateDoc(doc(db, 'pendingEmployees', emp.code), {
-          name, department: editForm.department, role: editForm.role, points: Number(editForm.points) || 0,
-        })
+        const patch = { name, department: editForm.department, role: editForm.role, points: Number(editForm.points) || 0 }
+        await updateDoc(doc(db, 'pendingEmployees', emp.code), patch)
+        // อัปเดตแถวนี้ในหน้าจอเลย ไม่โหลดรายชื่อทั้งหมดใหม่ (ประหยัดโควตาอ่านของ Firestore)
+        setPending(prev => prev.map(p => (p.id === emp.id ? { ...p, ...patch } : p)))
       } else {
         const delta = Number(editDelta) || 0
-        const updates = { name, department: editForm.department, role: editForm.role }
-        if (delta !== 0) updates.points = Math.max(0, (emp.points ?? 0) + delta)
-        await updateDoc(doc(db, 'employees', emp.id), updates)
-        if (delta !== 0) {
-          // pointsUsed: เพิ่ม=ลบ, หัก=บวก → = -delta ; ผลต่อยอด = -pointsUsed
-          await addDoc(collection(db, 'transactions'), {
-            employeeId: emp.id,
-            employeeName: name,
-            rewardName: editNote || (delta > 0 ? 'เพิ่มแต้มโดย Admin' : 'หักแต้มโดย Admin'),
-            rewardId: null,
-            pointsUsed: -delta,
-            createdAt: new Date(),
-            status: delta > 0 ? 'เพิ่มแต้ม' : 'หักแต้ม',
-          })
-        }
+        const empRef = doc(db, 'employees', emp.id)
+        let newPoints = emp.points ?? 0
+        // อ่านยอดล่าสุดจากฐานข้อมูลตอนบันทึก (ไม่ใช้เลขที่ค้างบนหน้าจอ — พนักงานอาจแลกของ/แอดมินอีกคนแก้ไปแล้ว)
+        // และเขียนยอด + แถวประวัติใน transaction เดียว → ไม่มีกรณียอดเปลี่ยนแต่ไม่มีแถวประวัติ (หรือกลับกัน)
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(empRef)
+          if (!snap.exists()) throw new Error('ไม่พบพนักงานคนนี้ (อาจถูกลบไปแล้ว) กรุณารีเฟรชหน้า')
+          const current = snap.data().points ?? 0
+          const updates = { name, department: editForm.department, role: editForm.role }
+          newPoints = current
+          if (delta !== 0) { newPoints = Math.max(0, current + delta); updates.points = newPoints }
+          tx.update(empRef, updates)
+          if (delta !== 0) {
+            // pointsUsed: เพิ่ม=ลบ, หัก=บวก → = -delta ; ผลต่อยอด = -pointsUsed
+            tx.set(doc(collection(db, 'transactions')), {
+              employeeId: emp.id,
+              employeeName: name,
+              rewardName: editNote || (delta > 0 ? 'เพิ่มแต้มโดย Admin' : 'หักแต้มโดย Admin'),
+              rewardId: null,
+              pointsUsed: -delta,
+              createdAt: new Date(),
+              status: delta > 0 ? 'เพิ่มแต้ม' : 'หักแต้ม',
+            })
+          }
+        })
+        // อัปเดตแถวนี้ในหน้าจอเลย ไม่โหลดรายชื่อทั้งหมดใหม่
+        setEmployees(prev => prev.map(e => (e.id === emp.id
+          ? { ...e, name, department: editForm.department, role: editForm.role, points: newPoints }
+          : e)))
       }
       closeEdit()
-      fetchAll()
       setSuccessMsg(`บันทึกข้อมูล "${name}" เรียบร้อย!`)
       setTimeout(() => setSuccessMsg(''), 3000)
     } catch (err) {
-      setErrMsg(err.message)
+      setEditErr('บันทึกไม่สำเร็จ: ' + err.message) // โมดัลยังเปิดอยู่ → ไม่มีอะไรถูกบันทึก ลองใหม่ได้
     }
   }
 
@@ -486,6 +503,12 @@ export default function AdminEmployees() {
                   </div>
                 )}
               </>
+            )}
+
+            {editErr && (
+              <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 13, fontWeight: 700 }}>
+                ⚠️ {editErr}
+              </div>
             )}
 
             <div style={{ display: 'flex', gap: 10 }}>

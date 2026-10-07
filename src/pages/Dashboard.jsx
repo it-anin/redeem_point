@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { collection, getDocs, doc, getDoc, runTransaction, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -61,10 +61,18 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchRewards()
-    fetchReceived()
-    fetchApprovedNotifications()
+    loadMyTransactions({ notifyApproved: true })
     fetchRedeemCfg()
   }, [])
+
+  // แต้มเปลี่ยน (admin เพิ่ม/หัก หรือเราแลกเอง — profile อัปเดตสดจาก AuthContext) → โหลดรายการของเราใหม่
+  // ให้ popup "แต้มที่ได้รับเดือนนี้" ตรงกับแต้มที่เห็น (รอบแรกตอนเปิดหน้าโหลดไปแล้วด้านบน จึงข้าม)
+  const lastPoints = useRef(profile?.points)
+  useEffect(() => {
+    if (lastPoints.current === profile?.points) return
+    lastPoints.current = profile?.points
+    loadMyTransactions({ notifyApproved: false })
+  }, [profile?.points])
 
   // เช็คเวลาเปิดแลกใหม่ทุก 30 วิ (และทุกครั้งที่ cfg เปลี่ยน) ให้ปุ่มเปิด/ปิดเองตามเวลา
   useEffect(() => {
@@ -81,12 +89,26 @@ export default function Dashboard() {
     } catch { /* ใช้ค่า default */ }
   }
 
-  // แจ้งเตือนรางวัลที่ admin อนุมัติแล้ว (ที่ยังไม่เคยแจ้ง) — จำด้วย localStorage
-  const fetchApprovedNotifications = async () => {
+  // ดึงรายการของพนักงานคนนี้ "ครั้งเดียว" แล้วใช้ทำทั้ง popup "แต้มที่ได้รับเดือนนี้" และ popup "อนุมัติแล้ว!"
+  // (เดิมยิงคิวรีเดียวกันสองรอบทุกครั้งที่เปิดหน้าหลัก — กินโควตาอ่านฟรีรายวันของ Firestore เป็นสองเท่า)
+  const loadMyTransactions = async ({ notifyApproved }) => {
     const snap = await getDocs(query(collection(db, 'transactions'), where('employeeId', '==', user.email)))
-    const approved = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(t => t.rewardId && t.approval === 'อนุมัติแล้ว')
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+
+    // แต้มที่ HR เพิ่มให้ในเดือนนี้ (pointsUsed < 0 = ได้รับ)
+    const now = new Date()
+    const toDate = (t) => t.createdAt?.toDate?.() ?? (t.createdAt instanceof Date ? t.createdAt : null)
+    setReceived(rows
+      .filter(t => {
+        const dt = toDate(t)
+        return dt && dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth() && (t.pointsUsed ?? 0) < 0
+      })
+      .map(t => ({ id: t.id, date: toDate(t), points: -(t.pointsUsed ?? 0), note: t.rewardName }))
+      .sort((a, b) => b.date - a.date))
+
+    // แจ้งเตือนรางวัลที่ admin อนุมัติแล้ว (ที่ยังไม่เคยแจ้ง) — จำด้วย localStorage; เช็คเฉพาะตอนเปิดหน้า
+    if (!notifyApproved) return
+    const approved = rows.filter(t => t.rewardId && t.approval === 'อนุมัติแล้ว')
     const key = `approvedSeen_${user.email}`
     let seen = []
     try { seen = JSON.parse(localStorage.getItem(key) || '[]') } catch { seen = [] }
@@ -103,21 +125,6 @@ export default function Dashboard() {
     const snap = await getDocs(collection(db, 'rewards'))
     setRewards(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     setLoadingRewards(false)
-  }
-
-  // ดึงรายการแต้มที่ HR เพิ่มให้ในเดือนนี้ (pointsUsed < 0 = ได้รับ)
-  const fetchReceived = async () => {
-    const snap = await getDocs(query(collection(db, 'transactions'), where('employeeId', '==', user.email)))
-    const now = new Date()
-    const toDate = (t) => t.createdAt?.toDate?.() ?? (t.createdAt instanceof Date ? t.createdAt : null)
-    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      .filter(t => {
-        const dt = toDate(t)
-        return dt && dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth() && (t.pointsUsed ?? 0) < 0
-      })
-      .map(t => ({ id: t.id, date: toDate(t), points: -(t.pointsUsed ?? 0), note: t.rewardName }))
-      .sort((a, b) => b.date - a.date)
-    setReceived(list)
   }
 
   // ปิด popup แต้มไม่พอ พร้อมอนิเมชัน slide up out

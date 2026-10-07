@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { collection, query, orderBy, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { setAnnouncementIds } from '../announcementsCache'
 
 export default function Announcements() {
   const { user } = useAuth()
@@ -15,6 +16,7 @@ export default function Announcements() {
         const snap = await getDocs(q)
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         setItems(list)
+        setAnnouncementIds(list.map(a => a.id)) // ให้เลขแดงที่แถบเมนูล่างใช้รายการล่าสุดชุดเดียวกัน ไม่ต้องอ่านซ้ำ
         // บันทึกว่าอ่านประกาศทั้งหมดแล้ว (เคลียร์ badge)
         if (user?.email) {
           localStorage.setItem(`announcementsSeen_${user.email}`, JSON.stringify(list.map(a => a.id)))

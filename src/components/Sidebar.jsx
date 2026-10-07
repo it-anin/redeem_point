@@ -1,7 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { collection, getDocs } from 'firebase/firestore'
-import { db } from '../firebase'
+import { getAnnouncementIds } from '../announcementsCache'
 import { useAuth } from '../context/AuthContext'
 
 const NAV_EMPLOYEE = [
@@ -152,13 +151,13 @@ export function BottomNav() {
   const [newCount, setNewCount] = useState(0)
 
   // นับจำนวนประกาศที่ยังไม่อ่าน (จำด้วย localStorage)
+  // id ประกาศอ่านจาก Firestore แค่ครั้งแรกของรอบเปิดแอป — เปลี่ยนหน้าครั้งต่อไปคำนวณจากที่เก็บไว้ (ดู announcementsCache.js)
   useEffect(() => {
     if (!viewAsEmployee || !user?.email) return
     let active = true
     ;(async () => {
       try {
-        const snap = await getDocs(collection(db, 'announcements'))
-        const ids = snap.docs.map(d => d.id)
+        const ids = await getAnnouncementIds()
         const key = `announcementsSeen_${user.email}`
         let seen = []
         try { seen = JSON.parse(localStorage.getItem(key) || '[]') } catch { seen = [] }

@@ -9,30 +9,47 @@ export default function AdminApprovals() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState(STATUS.PENDING)
   const [msg, setMsg] = useState('')
+  const [errMsg, setErrMsg] = useState('') // error แสดงเป็นแบนเนอร์สีแดง (msg สีเขียวใช้กับสำเร็จเท่านั้น)
 
   useEffect(() => { fetchItems() }, [])
 
+  // โหลดรายการทั้งหมดตอนเปิดหน้าครั้งเดียว — หลังอนุมัติ/ปฏิเสธอัปเดตเฉพาะแถวนั้นในหน้าจอ ไม่โหลดทั้งคอลเลกชันใหม่
+  // (ประหยัดโควตาอ่านฟรีรายวันของ Firestore)
   const fetchItems = async () => {
-    const snap = await getDocs(collection(db, 'transactions'))
-    const toMs = (t) => t.createdAt?.toMillis?.() ?? (t.createdAt instanceof Date ? t.createdAt.getTime() : 0)
-    const list = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(t => t.rewardId) // เฉพาะรายการที่พนักงานแลกของ
-      .map(t => ({ ...t, approval: t.approval ?? STATUS.PENDING }))
-      .sort((a, b) => toMs(b) - toMs(a))
-    setItems(list)
-    setLoading(false)
+    try {
+      const snap = await getDocs(collection(db, 'transactions'))
+      const toMs = (t) => t.createdAt?.toMillis?.() ?? (t.createdAt instanceof Date ? t.createdAt.getTime() : 0)
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(t => t.rewardId) // เฉพาะรายการที่พนักงานแลกของ
+        .map(t => ({ ...t, approval: t.approval ?? STATUS.PENDING }))
+        .sort((a, b) => toMs(b) - toMs(a))
+      setItems(list)
+    } catch (e) {
+      setErrMsg('โหลดรายการไม่สำเร็จ: ' + e.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
+  const setApproval = (id, approval) =>
+    setItems(prev => prev.map(x => (x.id === id ? { ...x, approval } : x)))
+
   const approve = async (t) => {
-    await updateDoc(doc(db, 'transactions', t.id), { approval: STATUS.APPROVED })
-    setMsg(`อนุมัติ "${t.rewardName}" ของ ${t.employeeName} แล้ว`)
-    setTimeout(() => setMsg(''), 3000)
-    fetchItems()
+    setErrMsg('')
+    try {
+      await updateDoc(doc(db, 'transactions', t.id), { approval: STATUS.APPROVED })
+      setApproval(t.id, STATUS.APPROVED)
+      setMsg(`อนุมัติ "${t.rewardName}" ของ ${t.employeeName} แล้ว`)
+      setTimeout(() => setMsg(''), 3000)
+    } catch (e) {
+      setErrMsg('อนุมัติไม่สำเร็จ: ' + e.message)
+    }
   }
 
   const reject = async (t) => {
     if (!window.confirm(`ปฏิเสธการแลก "${t.rewardName}" ของ ${t.employeeName}?\nจะคืนแต้ม ${t.pointsUsed?.toLocaleString()} และคืนสต็อก +1`)) return
+    setErrMsg('')
     try {
       await runTransaction(db, async (tx) => {
         const txRef = doc(db, 'transactions', t.id)
@@ -48,11 +65,11 @@ export default function AdminApprovals() {
         }
         tx.update(txRef, { approval: STATUS.REJECTED })
       })
+      setApproval(t.id, STATUS.REJECTED)
       setMsg(`ปฏิเสธและคืนแต้มให้ ${t.employeeName} แล้ว`)
       setTimeout(() => setMsg(''), 3000)
-      fetchItems()
     } catch (e) {
-      setMsg('เกิดข้อผิดพลาด: ' + e.message)
+      setErrMsg('ปฏิเสธไม่สำเร็จ: ' + e.message)
     }
   }
 
@@ -66,6 +83,7 @@ export default function AdminApprovals() {
     <>
 
       {msg && <div style={{ background: '#D1FAE5', color: '#065F46', padding: '12px 18px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontWeight: 700 }}>✅ {msg}</div>}
+      {errMsg && <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '12px 18px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontWeight: 700 }}>⚠️ {errMsg}</div>}
 
       {/* Filter */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>

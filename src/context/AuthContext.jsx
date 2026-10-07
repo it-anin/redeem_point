@@ -1,10 +1,26 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { onAuthStateChanged, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut } from 'firebase/auth'
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 
 const AuthContext = createContext(null)
 const googleProvider = new GoogleAuthProvider()
+
+// แสดงแทนหน้าขาวเมื่ออ่านโปรไฟล์จาก Firestore ไม่ได้ (เช่นโควตาอ่านฟรีรายวันของ Firestore หมด / เน็ตหลุด)
+function LoadErrorScreen() {
+  return (
+    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'var(--bg)' }}>
+      <div className="card" style={{ maxWidth: 360, width: '100%', textAlign: 'center', padding: 28 }}>
+        <div style={{ fontSize: 44, marginBottom: 10 }}>🛠️</div>
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>ระบบขัดข้องชั่วคราว</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20, lineHeight: 1.7 }}>
+          ตอนนี้โหลดข้อมูลไม่ได้ กรุณาลองใหม่อีกครั้งในอีกสักครู่ ถ้ายังไม่ได้ให้แจ้งผู้ดูแลระบบ
+        </div>
+        <button className="btn-primary" style={{ width: '100%', padding: '11px' }} onClick={() => window.location.reload()}>ลองใหม่</button>
+      </div>
+    </div>
+  )
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)             // ผู้ใช้ที่ผูกบัญชีครบแล้ว
@@ -12,6 +28,7 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null)       // Firestore employee doc
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState('')     // ข้อความแจ้งเตือนตอนล็อกอินไม่ผ่าน
+  const [loadError, setLoadError] = useState(false)  // อ่านโปรไฟล์จาก Firestore ไม่ได้
 
   useEffect(() => {
     // ตรวจผลลัพธ์ signInWithRedirect (เผื่อ redirect กลับมาแล้ว error เช่น ถูกยกเลิก/เน็ตหลุด)
@@ -19,29 +36,48 @@ export function AuthProvider({ children }) {
       setAuthError('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
     })
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // จับคู่พนักงานด้วยอีเมล (doc id ของ employees = อีเมล)
-        const snap = await getDoc(doc(db, 'employees', firebaseUser.email))
-        if (snap.exists()) {
-          setUser(firebaseUser)
-          setProfile({ id: snap.id, ...snap.data() })
-          setPendingUser(null)
-          setAuthError('')
+      try {
+        if (firebaseUser) {
+          // จับคู่พนักงานด้วยอีเมล (doc id ของ employees = อีเมล)
+          const snap = await getDoc(doc(db, 'employees', firebaseUser.email))
+          if (snap.exists()) {
+            setUser(firebaseUser)
+            setProfile({ id: snap.id, ...snap.data() })
+            setPendingUser(null)
+            setAuthError('')
+          } else {
+            // ยังไม่เคยผูกบัญชี → ให้ไปกรอกรหัสพนักงาน
+            setUser(null)
+            setProfile(null)
+            setPendingUser(firebaseUser)
+          }
         } else {
-          // ยังไม่เคยผูกบัญชี → ให้ไปกรอกรหัสพนักงาน
           setUser(null)
           setProfile(null)
-          setPendingUser(firebaseUser)
+          setPendingUser(null)
         }
-      } else {
-        setUser(null)
-        setProfile(null)
-        setPendingUser(null)
+        setLoadError(false)
+      } catch (e) {
+        // อ่านโปรไฟล์ไม่ได้ → แจ้งแทนการค้างหน้าขาว (เดิม getDoc พังแล้ว setLoading(false) ไม่ถูกเรียก → เห็นหน้าขาวตลอด)
+        console.error('โหลดโปรไฟล์ไม่สำเร็จ', e)
+        setLoadError(true)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     })
     return unsub
   }, [])
+
+  // ฟัง employees/{อีเมล} แบบ realtime หลังผูกบัญชีแล้ว — admin เพิ่ม/หักแต้มให้ ชิปแต้มบนมือถือเปลี่ยนเอง
+  // โดยไม่ต้องปิด-เปิดแอป (เดิมอ่านครั้งเดียวตอนล็อกอิน เปิดแอปค้างไว้จึงเห็นแต้มเก่า)
+  useEffect(() => {
+    if (!user?.email) return
+    return onSnapshot(
+      doc(db, 'employees', user.email),
+      (snap) => { if (snap.exists()) setProfile({ id: snap.id, ...snap.data() }) },
+      () => { /* อ่านไม่ได้ชั่วคราว (เน็ตหลุด ฯลฯ) → คงค่าเดิมไว้ */ }
+    )
+  }, [user?.email])
 
   const loginWithGoogle = async () => {
     setAuthError('')
@@ -88,7 +124,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{ user, pendingUser, profile, loading, authError, loginWithGoogle, linkWithCode, logout, patchProfile }}>
-      {!loading && children}
+      {!loading && (loadError ? <LoadErrorScreen /> : children)}
     </AuthContext.Provider>
   )
 }
