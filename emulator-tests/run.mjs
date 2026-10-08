@@ -3,7 +3,7 @@
 // รัน: npm run test:emulator   (ต้องมี Java + firebase-tools; ไม่รวมอยู่ใน `npm test`)
 import { initializeApp } from 'firebase/app'
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword } from 'firebase/auth'
-import { getFirestore, connectFirestoreEmulator, collection, getDocs, getDoc, doc, query, where } from 'firebase/firestore'
+import { getFirestore, connectFirestoreEmulator, collection, getDocs, getDoc, doc, query, where, onSnapshot, runTransaction } from 'firebase/firestore'
 
 const src = (f) => new URL(`../src/${f}`, import.meta.url).href
 const { importOne, rollbackOne } = await import(src('importHistoryDb.js'))
@@ -275,6 +275,38 @@ const big = Array.from({ length: 400 }, (_, i) => row6('E004', `ของ ${i + 
 const bigPlan = await planOf(big)
 const out = await importOne(adminDb, bigPlan.items[0], makeBatchId(), cutoff)
 check('400 รายการในคนเดียว (402 doc ใน transaction เดียว) เขียนผ่าน rules จริง: 401 แถว ยอด 3000', out.rows.length === 401 && (await pts(DAVE)) === 3000)
+
+// ════════════════════════════════════════════════════════════════════════
+section('F) แต้มสดบนมือถือ (onSnapshot ของพนักงานเอง แบบเดียวกับ AuthContext) + แลกด้วยแต้มที่แอดมินเพิ่งเพิ่ม')
+await reset()
+await seed(`employees/${encodeURIComponent(ALICE)}`, { ...PEOPLE[ALICE], email: ALICE, points: 100 })
+const seen = []
+const unsub = onSnapshot(doc(aliceDb, 'employees', ALICE), (s) => { if (s.exists()) seen.push(s.data().points) }, (err) => seen.push(`ERR:${err.code}`))
+const waitFor = async (cond, ms = 5000) => { const t0 = Date.now(); while (!cond()) { if (Date.now() - t0 > ms) return false; await new Promise((r) => setTimeout(r, 25)) } return true }
+// แอดมิน → พนักงาน → ✏️ แก้ไข → ปรับแต้ม: คัดลอกตรรกะ transaction จาก AdminEmployees.saveEdit มาทดสอบกับ rules จริง
+// (ตัวหน้าจอจริงทดสอบที่ src/pointsFlow.e2e.test.js บน Firestore จำลอง)
+async function adminAdjust(email, delta) {
+  const empRef = doc(adminDb, 'employees', email)
+  await runTransaction(adminDb, async (tx) => {
+    const snap = await tx.get(empRef)
+    tx.update(empRef, { points: Math.max(0, (snap.data().points ?? 0) + delta) })
+    tx.set(doc(collection(adminDb, 'transactions')), {
+      employeeId: email, employeeName: snap.data().name, rewardId: null, pointsUsed: -delta, createdAt: new Date(),
+      rewardName: delta > 0 ? 'เพิ่มแต้มโดย Admin' : 'หักแต้มโดย Admin', status: delta > 0 ? 'เพิ่มแต้ม' : 'หักแต้ม',
+    })
+  })
+}
+check('listener ของพนักงานอ่านเอกสารตัวเองได้ตาม rules และได้ค่าเริ่มต้น 100', await waitFor(() => seen.includes(100)), JSON.stringify(seen))
+e = await errOf(() => redeem())
+check('ก่อนแอดมินเพิ่ม: แลกไม่ได้ (แต้ม 100 < ราคา 300) และไม่เขียนอะไร', e?.message === 'แต้มไม่พอ' && (await pts(ALICE)) === 100 && (await allTx()).length === 0)
+await adminAdjust(ALICE, 500)
+check('แอดมินเพิ่ม +500 → listener ของพนักงานได้ยอดใหม่ 600 โดยไม่ต้องรีโหลด', await waitFor(() => seen.includes(600)), JSON.stringify(seen))
+id = await redeem()
+check('แลกด้วยแต้มที่แอดมินเพิ่ม: สำเร็จ 600→300, แถวประวัติ 300, listener เห็น 300', (await waitFor(() => seen.includes(300))) && (await pts(ALICE)) === 300 && (await txDoc(id)).pointsUsed === 300, JSON.stringify(seen))
+check('ลำดับที่ listener เห็น = 100 → 600 → 300 (ไม่มีค่ากลางผิด ไม่หักซ้ำ)', JSON.stringify(seen.filter((v, i) => i === 0 || v !== seen[i - 1])) === '[100,600,300]', JSON.stringify(seen))
+await adminAdjust(ALICE, -250)
+check('แอดมินหัก −250 → listener เห็น 50 และแลกต่อไม่ได้ (50 < 300)', (await waitFor(() => seen.includes(50))) && (await errOf(() => redeem()))?.message === 'แต้มไม่พอ')
+unsub()
 
 console.log(`\n${failures === 0 ? `ALL PASSED (${checks} checks)` : `${failures} FAILED of ${checks} checks`}`)
 process.exit(failures === 0 ? 0 : 1)
