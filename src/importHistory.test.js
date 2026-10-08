@@ -77,6 +77,16 @@ describe('parsePaste', () => {
     const { rows } = parsePaste('E001\t\t\t', { now: NOW })
     expect(rows[0]).toMatchObject({ rewardName: '', total: null, used: 0, date: null, errors: [] })
   })
+  test('คอลัมน์ที่ 6 = คงเหลือ (ว่างได้) และหัวตาราง 6 คอลัมน์ยังถูกข้าม', () => {
+    const { rows, header } = parsePaste('พนักงาน\tชื่อรางวัล\tคะแนนทั้งหมด\tคะแนนที่ใช้แลก\tวันที่\tคงเหลือ\nE001\tของ\t2290\t800\t\t320\nE001\tของ2\t2290\t400', { now: NOW })
+    expect(header).toMatch(/คงเหลือ/)
+    expect(rows.map((r) => r.remaining)).toEqual([320, null])
+    expect(rows[0].errors).toEqual([])
+  })
+  test('ไฟล์ที่ไม่มีคอลัมน์วันที่แล้วเอาคงเหลือไว้คอลัมน์ที่ 5 → error พร้อมบอกให้ย้ายไปคอลัมน์ที่ 6; คงเหลือไม่ใช่ตัวเลข = error', () => {
+    expect(parsePaste('E001\tของ\t2290\t800\t320', { now: NOW }).rows[0].errors.join()).toMatch(/คอลัมน์ที่ 6/)
+    expect(parsePaste('E001\tของ\t2290\t800\t\tabc', { now: NOW }).rows[0].errors.join()).toMatch(/คงเหลือ/)
+  })
   test('error ระดับแถว: ใช้แลกแต่ไม่มีชื่อรางวัล / เลขผิด / วันที่ผิด / ไม่มีพนักงาน', () => {
     const { rows } = parsePaste('E001\t\t100\t50\n\tของ\t100\t10\nE001\tของ\tabc\t10\nE001\tของ\t100\t10\t99/99/2024', { now: NOW })
     expect(rows[0].errors.join()).toMatch(/ไม่มีชื่อรางวัล/)
@@ -170,7 +180,71 @@ describe('buildPlan — ตรวจข้อมูล', () => {
   test('สรุป + เรียง error ก่อน ok ก่อน skip', () => {
     const { items, summary } = plan('E001\tA\t1500\t500\nE002\tB\t1000\t200\nZZZ\tC\t10\t1\nE010\t\t0\t0')
     expect(items.map((i) => i.status)).toEqual(['error', 'ok', 'ok', 'skip'])
-    expect(summary).toEqual({ ok: 2, error: 1, skip: 1, rows: 1 + 1 + (1 + 1 + 1), redemptions: 2, carried: 2500, used: 700 })
+    expect(summary).toEqual({ ok: 2, error: 1, skip: 1, rows: 1 + 1 + (1 + 1 + 1), redemptions: 2, checked: 0, carried: 2500, used: 700 })
+  })
+})
+
+describe('buildPlan — เทียบกับ "คงเหลือ" ในไฟล์เก่า', () => {
+  // ตัวอย่างจริง SRC-SA-PHAS-0022: ทั้งหมด 2290, ใช้แลก 1970 (4 รายการ), คงเหลือ 320
+  const E = [
+    { id: 'src22@x.com', name: 'พนักงานตัวอย่าง', code: 'SRC-SA-PHAS-0022', role: 'employee', points: 0 },
+    { id: 'other@x.com', name: 'อีกคน', code: 'E500', role: 'employee', points: 0 },
+  ]
+  const ITEMS = [['บัตรกำนัล', 800], ['เสื้อ', 450], ['แก้วน้ำ', 320], ['กระเป๋า', 400]]
+  const sheet = (items = ITEMS, remaining = 320, key = 'src-sa-phas-0022') =>
+    items.map(([n, u]) => [key, n, 2290, u, '', remaining].join('\t')).join('\n')
+  const planE = (t) => plan(t, [], E)
+  const one = (t) => planE(t).items[0]
+
+  test('รายการแลกรวม 1970 ตรงกับ 2290 − 320 → ผ่าน และนับว่าเทียบแล้ว', () => {
+    expect(one(sheet())).toMatchObject({ status: 'ok', matchedBy: 'code', total: 2290, used: 1970, remaining: 320, fileRemaining: 320, errors: [] })
+    expect(planE(sheet()).summary).toMatchObject({ ok: 1, error: 0, checked: 1 })
+  })
+  test('รายการหาย (รวมได้ 1870) → ไม่นำเข้า และบอกว่าขาดไป 100', () => {
+    const p = planE(sheet([['บัตรกำนัล', 800], ['เสื้อ', 450], ['แก้วน้ำ', 220], ['กระเป๋า', 400]]))
+    expect(p.items[0].status).toBe('error')
+    const msg = p.items[0].errors.join()
+    expect(msg).toMatch(/2,290.*320.*1,970/)
+    expect(msg).toMatch(/รวมได้ 1,870/)
+    expect(msg).toMatch(/รายการขาดไป 100/)
+    expect(p.summary).toMatchObject({ ok: 0, error: 1, checked: 0 })
+  })
+  test('รายการเกิน (รวมได้ 2070) → ไม่นำเข้า และบอกว่าเกินมา 100', () => {
+    const it = one(sheet([['บัตรกำนัล', 800], ['เสื้อ', 450], ['แก้วน้ำ', 320], ['กระเป๋า', 500]]))
+    expect(it.status).toBe('error')
+    expect(it.errors.join()).toMatch(/รายการเกินมา 100/)
+  })
+  test('คงเหลือมากกว่าคะแนนทั้งหมด → error', () => {
+    expect(one(sheet(ITEMS, 3000)).errors.join()).toMatch(/มากกว่าคะแนนทั้งหมด/)
+  })
+  test('"คงเหลือ" ไม่เท่ากันในแต่ละแถว → error; ใส่แถวเดียวก็เทียบได้', () => {
+    const mixed = [
+      ['src-sa-phas-0022', 'A', 2290, 1000, '', 320].join('\t'),
+      ['src-sa-phas-0022', 'B', 2290, 970, '', 300].join('\t'),
+    ].join('\n')
+    expect(one(mixed).errors.join()).toMatch(/คงเหลือ.*ไม่เท่ากัน/)
+    const onlyOnce = [
+      ['src-sa-phas-0022', 'A', 2290, 1000, '', ''].join('\t'),
+      ['src-sa-phas-0022', 'B', 2290, 970, '', 320].join('\t'),
+    ].join('\n')
+    expect(one(onlyOnce)).toMatchObject({ status: 'ok', fileRemaining: 320 })
+  })
+  test('ไม่มีคอลัมน์คงเหลือ = ไม่เทียบ ผ่านเหมือนเดิม และไม่นับใน checked', () => {
+    const noRem = ITEMS.map(([n, u]) => ['src-sa-phas-0022', n, 2290, u].join('\t')).join('\n')
+    expect(one(noRem)).toMatchObject({ status: 'ok', fileRemaining: null })
+    expect(planE(noRem).summary).toMatchObject({ ok: 1, checked: 0 })
+  })
+  test('ตรวจรายคน: คนที่ตรงผ่าน คนที่ไม่ตรงถูกข้าม และ checked นับเฉพาะคนที่ผ่าน', () => {
+    const p = planE(sheet() + '\n' + ['E500', 'ของ', 1000, 100, '', 800].join('\t'))
+    expect(p.items.map((i) => [i.label, i.status])).toEqual([['อีกคน', 'error'], ['พนักงานตัวอย่าง', 'ok']])
+    expect(p.summary).toMatchObject({ ok: 1, error: 1, checked: 1 })
+  })
+  test('ตัวเลขใน ledger ที่เขียนจริงยังเป็น 2290 − 1970 = 320 (คงเหลือในไฟล์ใช้ตรวจ ไม่ใช่ค่าที่ตั้ง)', () => {
+    const it = one(sheet())
+    const { points, rows } = buildLedger(it, { current: 0, batchId: 'imp-x', cutoff: noon(2025, 9, 30) })
+    expect(points).toBe(320)
+    expect(rows.map((r) => r.data.pointsUsed)).toEqual([-2290, 800, 450, 320, 400])
+    expect(rows.reduce((s, r) => s - r.data.pointsUsed, 0)).toBe(320)
   })
 })
 

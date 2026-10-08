@@ -1,6 +1,7 @@
 // ตรรกะล้วน (ไม่แตะ Firebase) ของเครื่องมือ "นำเข้าประวัติการแลกย้อนหลัง" — แยกไว้ให้เทสต์ได้ (importHistory.test.js)
 //
-// ข้อมูลที่วาง (คั่นด้วย Tab, คัดลอกจาก Excel): พนักงาน | ชื่อรางวัล | คะแนนทั้งหมด | คะแนนที่ใช้แลก | วันที่ (ไม่บังคับ)
+// ข้อมูลที่วาง (คั่นด้วย Tab, คัดลอกจาก Excel): พนักงาน | ชื่อรางวัล | คะแนนทั้งหมด | คะแนนที่ใช้แลก | วันที่ (ไม่บังคับ) | คงเหลือ (ไม่บังคับ แต่แนะนำ)
+// "คงเหลือ" จากไฟล์เก่าใช้ "ตรวจ" เท่านั้น: ถ้าไม่เท่ากับ ทั้งหมด − ใช้แลกรวม (รายการแลกขาด/เกิน) จะข้ามคนนั้น ไม่ตั้งยอดผิดเงียบๆ
 //
 // กติกา: ยอดคงเหลือใหม่ของพนักงาน = คะแนนทั้งหมด (T) − ผลรวมที่ใช้แลก (ΣU) เป๊ะ (ทับยอดเดิม) โดยเขียนแถวใน transactions ให้ยอดสอดคล้องกับประวัติ:
 //   • "ยอดยกมา"   pointsUsed = −T                  (ผลต่อยอด +T; doc ID คงที่ = ตัวกันนำเข้าซ้ำ)
@@ -56,18 +57,25 @@ export function parseDate(raw, { now = new Date() } = {}) {
 const looksLikeHeader = (c) => Boolean(c[2] || c[3]) && !hasDigit(c[2]) && !hasDigit(c[3])
 
 function parseRow(cells, line, now) {
-  const [employeeKey = '', rewardName = '', totalRaw = '', usedRaw = '', dateRaw = ''] = cells
+  const [employeeKey = '', rewardName = '', totalRaw = '', usedRaw = '', dateRaw = '', remainingRaw = ''] = cells
   const errors = []
   const t = parsePoints(totalRaw)
   const u = parsePoints(usedRaw)
   const dt = parseDate(dateRaw, { now })
+  const rm = parsePoints(remainingRaw)
   if (!employeeKey) errors.push('ไม่มีรหัส/อีเมล/ชื่อพนักงาน')
   if (t.error) errors.push(`คะแนนทั้งหมด: ${t.error}`)
   if (u.error) errors.push(`คะแนนที่ใช้แลก: ${u.error}`)
-  if (dt.error) errors.push(`วันที่: ${dt.error}`)
+  if (dt.error) {
+    // ไฟล์ที่ไม่มีคอลัมน์วันที่ มักเอา "คงเหลือ" มาไว้คอลัมน์ที่ 5 — บอกทางแก้แทนที่จะแค่ว่าอ่านวันที่ไม่ได้
+    errors.push(/^[\d,]+$/.test(String(dateRaw).trim())
+      ? `วันที่: "${String(dateRaw).trim()}" เป็นตัวเลขล้วน — ถ้าเป็น "คงเหลือ" ให้ย้ายไปคอลัมน์ที่ 6 (คอลัมน์ที่ 5 คือวันที่ เว้นว่างได้)`
+      : `วันที่: ${dt.error}`)
+  }
+  if (rm.error) errors.push(`คงเหลือ: ${rm.error}`)
   const used = u.value ?? 0
   if (!rewardName && used > 0) errors.push('มีคะแนนที่ใช้แลกแต่ไม่มีชื่อรางวัล')
-  return { line, employeeKey, rewardName, total: t.value ?? null, used, date: dt.value ?? null, errors }
+  return { line, employeeKey, rewardName, total: t.value ?? null, used, date: dt.value ?? null, remaining: rm.value ?? null, errors }
 }
 
 export function parsePaste(text, { now = new Date() } = {}) {
@@ -117,6 +125,17 @@ const findPending = (key, pending) => {
 
 const STATUS_RANK = { error: 0, ok: 1, skip: 2 }
 const MAX_REDEMPTIONS_PER_PERSON = 400
+
+// "คงเหลือ" ในไฟล์เก่าไม่ตรงกับ ทั้งหมด − ใช้แลกรวม → บอกว่ารายการแลกขาด/เกินเท่าไร (เจอบ่อยสุดคือรายการหายไปบางรายการ)
+function remainingMismatch(total, used, remaining) {
+  if (remaining > total) return `คงเหลือในไฟล์ ${fmt(remaining)} มากกว่าคะแนนทั้งหมด ${fmt(total)} — ข้อมูลไม่สอดคล้อง`
+  const expectedUsed = total - remaining
+  const diff = Math.abs(expectedUsed - used)
+  const missing = used < expectedUsed
+  return `คงเหลือในไฟล์ ${fmt(remaining)} ไม่ตรง: ทั้งหมด − คงเหลือ = ${fmt(total)} − ${fmt(remaining)} = ${fmt(expectedUsed)} ` +
+    `แต่รายการแลกรวมได้ ${fmt(used)} (${missing ? 'รายการขาดไป' : 'รายการเกินมา'} ${fmt(diff)}) — ` +
+    (missing ? 'ตรวจรายการที่หายไป หรือเพิ่มแถวชดเชย (เช่น "ใช้แลก (ไม่มีรายละเอียด)") ให้ครบ' : 'ตรวจว่ามีรายการซ้ำหรือแต้มผิดหรือไม่')
+}
 
 // ── สร้างแผนนำเข้าต่อพนักงาน (ใช้ทำพรีวิว) ──
 // rows: จาก parsePaste · employees: ทุกคนใน employees (รวม admin ไว้ตรวจ) · pending: pendingEmployees (ไว้บอกว่า "ยังไม่ผูกบัญชี")
@@ -176,12 +195,17 @@ export function buildPlan({ rows, employees = [], pending = [], transactions = [
     }
 
     let total = null
+    let fileRemaining = null // "คงเหลือ" จากไฟล์เก่า (ถ้ามี) — ใช้ตรวจอย่างเดียว ไม่ใช่ค่าที่ตั้งให้พนักงาน
     if (emp) {
       const totals = [...new Set(g.rows.map((r) => r.total).filter((v) => v !== null))]
       if (totals.length === 0) errors.push('ไม่มี "คะแนนทั้งหมด" ในแถวของพนักงานคนนี้')
       else if (totals.length > 1) errors.push(`"คะแนนทั้งหมด" ไม่เท่ากันในแต่ละแถว (พบ ${totals.map(fmt).join(', ')})`)
       else total = totals[0]
+      const rems = [...new Set(g.rows.map((r) => r.remaining).filter((v) => v !== null))]
+      if (rems.length > 1) errors.push(`"คงเหลือ" ไม่เท่ากันในแต่ละแถว (พบ ${rems.map(fmt).join(', ')})`)
+      else if (rems.length === 1) fileRemaining = rems[0]
       if (total !== null && used > total) errors.push(`ใช้แลกรวม ${fmt(used)} มากกว่าคะแนนทั้งหมด ${fmt(total)} — ข้อมูลไม่สอดคล้อง`)
+      else if (total !== null && fileRemaining !== null && fileRemaining !== total - used) errors.push(remainingMismatch(total, used, fileRemaining))
     }
 
     const current = emp ? Math.max(0, Number(emp.points) || 0) : 0
@@ -200,7 +224,7 @@ export function buildPlan({ rows, employees = [], pending = [], transactions = [
     return {
       key: g.key, status, employee: emp, matchedBy: g.matchedBy, label: g.label, keyText: g.keyText,
       lines: g.rows.map((r) => r.line),
-      total, used, remaining: total === null ? null : total - used, current,
+      total, used, remaining: total === null ? null : total - used, fileRemaining, current,
       redemptions, errors, warnings, info,
       ledgerRows: status === 'ok' ? 1 + (current !== 0 ? 1 : 0) + redemptions.length : 0,
     }
@@ -215,6 +239,7 @@ export function buildPlan({ rows, employees = [], pending = [], transactions = [
     skip: items.filter((i) => i.status === 'skip').length,
     rows: ok.reduce((s, i) => s + i.ledgerRows, 0),
     redemptions: ok.reduce((s, i) => s + i.redemptions.length, 0),
+    checked: ok.filter((i) => i.fileRemaining !== null).length, // กี่คนที่เทียบกับ "คงเหลือ" ในไฟล์แล้วตรง (ที่เหลือไม่มีคอลัมน์นี้ให้เทียบ)
     carried: ok.reduce((s, i) => s + i.total, 0),
     used: ok.reduce((s, i) => s + i.used, 0),
   }

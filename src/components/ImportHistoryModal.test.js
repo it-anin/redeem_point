@@ -81,6 +81,29 @@ test('พรีวิว: คนที่ผ่านนำเข้าได้
   expect(button('📥 นำเข้า 1 คน (3 แถว)').disabled).toBe(false)
 })
 
+test('เทียบกับ "คงเหลือ" ในไฟล์: ตรง → ✓ และนับ 1/1; ไม่ตรง (รายการขาด) → ถูกข้ามพร้อมบอกว่าขาดเท่าไร', async () => {
+  await render()
+  await fill({ text: row('E001', 'ของ', 2290, 1970, '', 320) })
+  await click(button('ตรวจสอบข้อมูล'))
+  expect(text()).toContain('เทียบกับ "คงเหลือ" ในไฟล์แล้ว 1/1 คน')
+  expect(text()).toContain('ตรงกับคงเหลือในไฟล์ (320)')
+  expect(button('📥 นำเข้า 1 คน').disabled).toBe(false)
+
+  await fill({ text: row('E001', 'ของ', 2290, 1870, '', 320) }) // รายการแลกรวมได้ 1870 ขาดไป 100
+  await click(button('ตรวจสอบข้อมูล'))
+  expect(text()).toContain('รายการขาดไป 100')
+  expect(text()).toContain('มีปัญหา 1')
+  expect(button('📥 นำเข้า').disabled).toBe(true)
+})
+
+test('ไม่มีคอลัมน์คงเหลือ → นำเข้าได้เหมือนเดิม แต่ป้ายเตือนว่ายังไม่ได้เทียบ (0/1)', async () => {
+  await render()
+  await fill({ text: row('E001', 'ของ', 2290, 1970) })
+  await click(button('ตรวจสอบข้อมูล'))
+  expect(text()).toContain('เทียบกับ "คงเหลือ" ในไฟล์แล้ว 0/1 คน')
+  expect(button('📥 นำเข้า 1 คน').disabled).toBe(false)
+})
+
 test('แก้ข้อมูลหลังตรวจสอบ → พรีวิวเก่าหายและปุ่มนำเข้าถูกปิด (กันนำเข้าข้อมูลที่ไม่ได้ตรวจ)', async () => {
   await render()
   await fill({ text: row('E001', 'ของ', 1500, 200) })

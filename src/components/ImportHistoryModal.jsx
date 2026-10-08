@@ -10,9 +10,9 @@ import { importOne, rollbackOne } from '../importHistoryDb'
 //    แล้วส่งแถว/ยอดที่เปลี่ยนกลับให้หน้าแม่ (onChanged) อัปเดต state เอง
 
 const SAMPLE = [
-  'E001\tบัตรกำนัล 200 บาท\t1500\t200\t15/03/2024',
-  'E001\tเสื้อยืดบริษัท\t1500\t350\t02/06/2024',
-  'E002\t\t800\t0',
+  'E001\tบัตรกำนัล 200 บาท\t1500\t200\t15/03/2024\t950',
+  'E001\tเสื้อยืดบริษัท\t1500\t350\t02/06/2024\t950',
+  'E002\t\t800\t0\t\t800',
 ].join('\n')
 
 const labelStyle = { fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }
@@ -179,10 +179,11 @@ export default function ImportHistoryModal({ employees, transactions, onClose, o
         </div>
 
         <div style={{ background: '#FEF3C7', color: '#92400E', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 12, fontWeight: 600, lineHeight: 1.8 }}>
-          วางจาก Excel / Google Sheets เรียงคอลัมน์: <b>พนักงาน | ชื่อรางวัล | คะแนนทั้งหมด | คะแนนที่ใช้แลก | วันที่ (ไม่บังคับ)</b><br />
-          • พนักงาน = รหัส / อีเมล / ชื่อ (ต้อง <b>ผูกบัญชีแล้ว</b>) · คะแนนทั้งหมด = คะแนนสะสมที่เคยได้ทั้งหมด (ก่อนหักที่แลก) ใส่ซ้ำทุกแถวของคนนั้นได้<br />
-          • คนที่ไม่เคยแลก: ใส่แถวเดียว เว้นชื่อรางวัล และใช้แลก = 0 · วันที่แบบ วัน/เดือน/ปี (ค.ศ. หรือ พ.ศ.) ว่าง = ใช้วันตัดยอด<br />
-          • ระบบจะตั้งยอดคงเหลือ = <b>คะแนนทั้งหมด − ใช้แลกรวม</b> <u>ทับยอดเดิม</u> (ถ้ายอดเดิมไม่ใช่ 0 จะมีแถว "ล้างยอดเดิม" ให้เห็นในประวัติ)
+          วางจาก Excel / Google Sheets เรียงคอลัมน์: <b>พนักงาน | ชื่อรางวัล | คะแนนทั้งหมด | คะแนนที่ใช้แลก | วันที่ (ไม่บังคับ) | คงเหลือ (ไม่บังคับ แต่แนะนำ)</b><br />
+          • พนักงาน = รหัส / อีเมล / ชื่อ (ต้อง <b>ผูกบัญชีแล้ว</b>) · คะแนนทั้งหมด = คะแนนสะสมที่เคยได้ทั้งหมด (ก่อนหักที่แลก) · ทั้งหมด/คงเหลือ ใส่ซ้ำทุกแถวของคนนั้นได้ (ต้องเท่ากัน)<br />
+          • คนที่ไม่เคยแลก: ใส่แถวเดียว เว้นชื่อรางวัล และใช้แลก = 0 · วันที่แบบ วัน/เดือน/ปี (ค.ศ. หรือ พ.ศ.) ว่าง = ใช้วันตัดยอด (ไม่มีคอลัมน์วันที่ก็เว้นคอลัมน์ที่ 5 ไว้ว่าง)<br />
+          • ระบบจะตั้งยอดคงเหลือ = <b>คะแนนทั้งหมด − ใช้แลกรวม</b> <u>ทับยอดเดิม</u> (ถ้ายอดเดิมไม่ใช่ 0 จะมีแถว "ล้างยอดเดิม" ให้เห็นในประวัติ)<br />
+          • ถ้าใส่ <b>คงเหลือ</b> จากไฟล์เก่า ระบบจะเทียบกับ ทั้งหมด − ใช้แลกรวม <u>ถ้าไม่ตรงจะข้ามคนนั้น</u> (มักเพราะรายการแลกขาด/เกิน) จะได้ไม่ตั้งยอดผิดเงียบๆ
         </div>
 
         <label style={labelStyle}>วันตัดยอด * (วันสุดท้ายของระบบเก่า — เป็นวันที่ของแถวยอดยกมา และของรายการที่ไม่มีวันที่)</label>
@@ -231,6 +232,11 @@ export default function ImportHistoryModal({ employees, transactions, onClose, o
               <span className="badge badge-success">✅ พร้อมนำเข้า {s.ok} คน · {s.rows} แถว</span>
               {s.error > 0 && <span className="badge badge-danger">❌ มีปัญหา {s.error} (จะถูกข้าม)</span>}
               {s.skip > 0 && <span className="badge badge-warn">⏭ ข้าม {s.skip}</span>}
+              {s.ok > 0 && (
+                <span className={`badge ${s.checked === s.ok ? 'badge-success' : 'badge-warn'}`} title='เทียบ "ทั้งหมด − ใช้แลกรวม" กับคอลัมน์ คงเหลือ ในไฟล์เก่า (คนที่ไม่ตรงถูกข้ามไปแล้ว)'>
+                  {s.checked === s.ok ? '✓' : '⚠️'} เทียบกับ "คงเหลือ" ในไฟล์แล้ว {s.checked}/{s.ok} คน
+                </span>
+              )}
               <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
                 ยกยอดรวม {s.carried.toLocaleString()} · ใช้แลกรวม {s.used.toLocaleString()} ({s.redemptions} รายการ) · ยอดคงเหลือรวมหลังนำเข้า {(s.carried - s.used).toLocaleString()}
               </span>
@@ -286,6 +292,7 @@ export default function ImportHistoryModal({ employees, transactions, onClose, o
                           <td style={{ ...cell, fontSize: 12, lineHeight: 1.6 }}>
                             {it.errors.map((m, i) => <div key={`e${i}`} style={{ color: '#991B1B', fontWeight: 700 }}>❌ {m}</div>)}
                             {it.warnings.map((m, i) => <div key={`w${i}`} style={{ color: '#92400E', fontWeight: 600 }}>⚠️ {m}</div>)}
+                            {it.status === 'ok' && it.fileRemaining !== null && <div style={{ color: '#065F46', fontWeight: 600 }}>✓ ตรงกับคงเหลือในไฟล์ ({it.fileRemaining.toLocaleString()})</div>}
                             {it.info && <div style={{ color: 'var(--text-muted)', fontWeight: 600 }}>{it.info}</div>}
                           </td>
                         </tr>
