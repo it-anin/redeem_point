@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { collection, query, orderBy, getDocs, getCountFromServer, doc, runTransaction, addDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import ImportHistoryModal from '../components/ImportHistoryModal'
 
 // createdAt/at จาก Firestore เป็น Timestamp (มี toDate) แต่รายการที่เพิ่งบันทึกในหน้านี้เก็บเป็น Date ตรงๆ — รองรับทั้งสองแบบ
 const toJsDate = (v) => (v?.toDate ? v.toDate() : v instanceof Date ? v : null)
@@ -29,6 +30,7 @@ export default function AdminHistory() {
   const [addModal, setAddModal] = useState(false)
   const [addForm, setAddForm] = useState({ employeeId: '', rewardName: '', points: '' })
   const [addErr, setAddErr] = useState('')
+  const [importModal, setImportModal] = useState(false) // นำเข้าประวัติย้อนหลังจากระบบเก่า (src/components/ImportHistoryModal.jsx)
   // เก็บ key พนักงานที่ "เปิด" ดูรายการแลกอยู่ (คลิกชื่อเพื่อเปิด/ปิด)
   const [expanded, setExpanded] = useState(new Set())
   const toggleExpand = (key) => {
@@ -110,6 +112,18 @@ export default function AdminHistory() {
   // ยอดแต้มจริงของพนักงานที่เพิ่งเปลี่ยน (ได้จากใน transaction) → อัปเดตหัวกลุ่ม/dropdown ทันที ไม่ต้องโหลดรายชื่อใหม่
   const patchBalance = (employeeId, points) =>
     setAllEmployees(prev => prev.map(e => (e.id === employeeId ? { ...e, points } : e)))
+
+  // ผลจากโมดัลนำเข้า/ย้อนการนำเข้า → อัปเดตหน้าจอเอง (เติม/เอาแถวออก + ยอดใหม่ + log) ไม่โหลดคอลเลกชันใหม่ (ประหยัดโควตาอ่าน)
+  // เรียงใหม่ตาม createdAt เพราะแถวที่นำเข้ามีวันที่ย้อนหลัง (ไม่ใช่ใหม่สุดเสมอ)
+  const applyImportChange = async ({ addedRows = [], removedIds = [], balances = {}, log }) => {
+    const gone = new Set(removedIds)
+    const ms = (t) => toJsDate(t.createdAt)?.getTime() ?? 0
+    setTransactions(prev => [...addedRows, ...prev.filter(t => !gone.has(t.id))].sort((a, b) => ms(b) - ms(a)))
+    if (Object.keys(balances).length > 0) {
+      setAllEmployees(prev => prev.map(e => (e.id in balances ? { ...e, points: balances[e.id] } : e)))
+    }
+    if (log) await writeLog(log.action, { id: null }, log.detail)
+  }
 
   const openEdit = (t) => {
     setEditTx(t)
@@ -303,6 +317,9 @@ export default function AdminHistory() {
         <button className="btn-primary" title="บันทึกการแลกให้พนักงานและหักแต้ม — ไม่ใช่การเพิ่มแต้ม (เพิ่มแต้มที่เมนู พนักงาน)" style={{ marginLeft: 'auto', padding: '8px 16px', fontSize: 13 }} onClick={() => { setAddForm({ employeeId: '', rewardName: '', points: '' }); setAddErr(''); setAddModal(true) }}>
           🎁 บันทึกการแลก (หักแต้ม)
         </button>
+        <button className="btn-primary" title="วางประวัติการแลกจากระบบเก่า (Excel) นำเข้าทีเดียวหลายคน พร้อมตั้งยอดคงเหลือให้ตรง" disabled={loading || allEmployees.length === 0} style={{ padding: '8px 16px', fontSize: 13 }} onClick={() => setImportModal(true)}>
+          📥 นำเข้าประวัติย้อนหลัง
+        </button>
         <button className="btn-primary" style={{ padding: '8px 16px', fontSize: 13 }} onClick={toggleLogs}>
           📋 บันทึกการแก้ไข ({logsLoaded ? logs.length : (logCount ?? '…')})
         </button>
@@ -318,10 +335,14 @@ export default function AdminHistory() {
             <div style={{ maxHeight: 320, overflowY: 'auto' }}>
               {logs.map(l => {
                 const isReset = l.action === 'reset_points'
-                const actionLabel = isReset ? 'รีเซ็ตแต้ม' : l.action
-                const badgeClass = (l.action === 'ลบ' || isReset) ? 'badge-danger' : 'badge-warn'
+                const isImport = l.action === 'import_history'
+                const isRollback = l.action === 'import_rollback'
+                const actionLabel = isReset ? 'รีเซ็ตแต้ม' : isImport ? 'นำเข้าประวัติ' : isRollback ? 'ย้อนการนำเข้า' : l.action
+                const badgeClass = (l.action === 'ลบ' || isReset || isRollback) ? 'badge-danger' : 'badge-warn'
                 const title = isReset
                   ? '♻️ รีเซ็ตแต้มทั้งระบบ'
+                  : isImport ? '📥 นำเข้าประวัติการแลกย้อนหลัง'
+                  : isRollback ? '↩️ ย้อนการนำเข้าประวัติ'
                   : `${l.employeeName} · 🎁 ${l.rewardName}`
                 return (
                 <div key={l.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 18px', borderBottom: '1px solid var(--border)' }}>
@@ -395,6 +416,7 @@ export default function AdminHistory() {
                         🎁 {t.rewardId
                           ? `แลกแต้ม ${t.rewardName}`
                           : (t.rewardName === 'ปรับแต้มโดย Admin' ? 'เพิ่มแต้มโดย Admin' : t.rewardName)}
+                        {t.imported && <span title="นำเข้าจากระบบเก่า" style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, marginLeft: 6 }}>· นำเข้า</span>}
                         {t.note && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>📝 {t.note}</div>}
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--primary-dark)' }}>
@@ -422,6 +444,16 @@ export default function AdminHistory() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Import modal — นำเข้าประวัติการแลกย้อนหลังจากระบบเก่า (ตั้งยอด + ใส่ประวัติเป็นกลุ่ม) */}
+      {importModal && (
+        <ImportHistoryModal
+          employees={allEmployees}
+          transactions={transactions}
+          onClose={() => setImportModal(false)}
+          onChanged={applyImportChange}
+        />
       )}
 
       {/* Edit modal */}

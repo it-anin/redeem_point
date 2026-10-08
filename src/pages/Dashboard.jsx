@@ -95,13 +95,13 @@ export default function Dashboard() {
     const snap = await getDocs(query(collection(db, 'transactions'), where('employeeId', '==', user.email)))
     const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-    // แต้มที่ HR เพิ่มให้ในเดือนนี้ (pointsUsed < 0 = ได้รับ)
+    // แต้มที่ HR เพิ่มให้ในเดือนนี้ (pointsUsed < 0 = ได้รับ) — ไม่รวมแถวที่นำเข้าจากระบบเก่า (imported: ยอดยกมา ไม่ใช่แต้มที่เพิ่งได้รับ)
     const now = new Date()
     const toDate = (t) => t.createdAt?.toDate?.() ?? (t.createdAt instanceof Date ? t.createdAt : null)
     setReceived(rows
       .filter(t => {
         const dt = toDate(t)
-        return dt && dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth() && (t.pointsUsed ?? 0) < 0
+        return dt && dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth() && (t.pointsUsed ?? 0) < 0 && !t.imported
       })
       .map(t => ({ id: t.id, date: toDate(t), points: -(t.pointsUsed ?? 0), note: t.rewardName }))
       .sort((a, b) => b.date - a.date))
