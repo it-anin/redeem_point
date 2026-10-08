@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { isRedemption, isRejected, spentOf } from '../pointsLedger'
 
 export default function History() {
   const { user } = useAuth()
@@ -25,9 +26,11 @@ export default function History() {
     fetch()
   }, [user.email])
 
-  // การแลกรางวัลเอง (มี rewardId) + รายการที่ admin บันทึกแทนให้ (addedByAdmin) — ไม่รวมแค่ admin ปรับแต้ม
-  const redeemed = transactions.filter(t => t.rewardId || t.addedByAdmin)
-  const totalSpent = redeemed.reduce((sum, t) => sum + (t.pointsUsed ?? 0), 0)
+  // การแลกรางวัลเอง (มี rewardId) + รายการที่ admin บันทึกแทนให้ (addedByAdmin) — ไม่รวม admin ปรับแต้ม และไม่รวมแถว "เพิ่มแต้ม" ที่ปุ่มเพิ่มรายการเวอร์ชันเก่าสร้าง
+  // (addedByAdmin เหมือนกันแต่ pointsUsed ติดลบ → เดิมโผล่เป็น "--500" และหักลด "แต้มที่ใช้ไป") ดู pointsLedger.js
+  const redeemed = transactions.filter(isRedemption)
+  // แต้มที่ใช้ไป = ไม่รวมรายการที่ถูกปฏิเสธ (คืนแต้มให้แล้ว) — แถวที่ปฏิเสธยังโชว์ในรายการพร้อมป้ายและขีดฆ่าแต้ม
+  const totalSpent = spentOf(transactions)
 
   return (
     <>
@@ -71,7 +74,7 @@ export default function History() {
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                <div className="hist-pts neg">-{t.pointsUsed?.toLocaleString()}</div>
+                <div className="hist-pts neg" style={isRejected(t) ? { textDecoration: 'line-through', opacity: 0.5 } : undefined}>-{t.pointsUsed?.toLocaleString()}</div>
                 {t.approval
                   ? <span className={`badge ${t.approval === 'อนุมัติแล้ว' ? 'badge-success' : t.approval === 'ปฏิเสธ' ? 'badge-danger' : 'badge-warn'}`}>{t.approval}</span>
                   : <span className="badge badge-success">{t.status}</span>}

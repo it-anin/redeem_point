@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { collection, getDocs, doc, updateDoc, runTransaction } from 'firebase/firestore'
+import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
-
-const STATUS = { PENDING: 'รออนุมัติ', APPROVED: 'อนุมัติแล้ว', REJECTED: 'ปฏิเสธ' }
+import { APPROVAL as STATUS } from '../pointsLedger'
+import { approveRedemption, rejectRedemption } from '../pointsDb'
 
 export default function AdminApprovals() {
   const [items, setItems] = useState([])
@@ -35,15 +35,23 @@ export default function AdminApprovals() {
   const setApproval = (id, approval) =>
     setItems(prev => prev.map(x => (x.id === id ? { ...x, approval } : x)))
 
+  // หน้านี้โหลดครั้งเดียวแล้วค้างได้นาน: ถ้ารายการถูกจัดการไปแล้ว (แอดมินอีกคน/แท็บเก่า) ฐานข้อมูลจะไม่ยอมทำซ้ำ (STALE/GONE)
+  // → แก้แถวในหน้าจอให้ตรงกับความจริงแล้วแจ้ง (เดิมอนุมัติ/ปฏิเสธซ้ำได้ → คืนแต้มซ้ำ หรืออนุมัติทับแถวที่คืนแต้มไปแล้ว)
+  const handleError = (e, t, action) => {
+    if (e.code === 'STALE' && e.current) setApproval(t.id, e.current)
+    if (e.code === 'GONE') setItems(prev => prev.filter(x => x.id !== t.id))
+    setErrMsg(`${action}ไม่สำเร็จ: ${e.message}`)
+  }
+
   const approve = async (t) => {
     setErrMsg('')
     try {
-      await updateDoc(doc(db, 'transactions', t.id), { approval: STATUS.APPROVED })
+      await approveRedemption(db, t.id)
       setApproval(t.id, STATUS.APPROVED)
       setMsg(`อนุมัติ "${t.rewardName}" ของ ${t.employeeName} แล้ว`)
       setTimeout(() => setMsg(''), 3000)
     } catch (e) {
-      setErrMsg('อนุมัติไม่สำเร็จ: ' + e.message)
+      handleError(e, t, 'อนุมัติ')
     }
   }
 
@@ -51,25 +59,12 @@ export default function AdminApprovals() {
     if (!window.confirm(`ปฏิเสธการแลก "${t.rewardName}" ของ ${t.employeeName}?\nจะคืนแต้ม ${t.pointsUsed?.toLocaleString()} และคืนสต็อก +1`)) return
     setErrMsg('')
     try {
-      await runTransaction(db, async (tx) => {
-        const txRef = doc(db, 'transactions', t.id)
-        const empRef = t.employeeId ? doc(db, 'employees', t.employeeId) : null
-        const rwRef = t.rewardId ? doc(db, 'rewards', t.rewardId) : null
-        const empSnap = empRef ? await tx.get(empRef) : null
-        const rwSnap = rwRef ? await tx.get(rwRef) : null
-        if (empRef && empSnap?.exists()) {
-          tx.update(empRef, { points: Math.max(0, (empSnap.data().points ?? 0) + (t.pointsUsed ?? 0)) })
-        }
-        if (rwRef && rwSnap?.exists()) {
-          tx.update(rwRef, { stock: (rwSnap.data().stock ?? 0) + 1 })
-        }
-        tx.update(txRef, { approval: STATUS.REJECTED })
-      })
+      await rejectRedemption(db, t.id) // คืนแต้ม/สต็อกด้วยค่าล่าสุดในฐานข้อมูล และทำได้เฉพาะแถวที่ยัง "รออนุมัติ" จริง
       setApproval(t.id, STATUS.REJECTED)
       setMsg(`ปฏิเสธและคืนแต้มให้ ${t.employeeName} แล้ว`)
       setTimeout(() => setMsg(''), 3000)
     } catch (e) {
-      setErrMsg('ปฏิเสธไม่สำเร็จ: ' + e.message)
+      handleError(e, t, 'ปฏิเสธ')
     }
   }
 

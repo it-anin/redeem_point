@@ -1,5 +1,6 @@
 import { collection, doc, runTransaction } from 'firebase/firestore'
 import { buildLedger, sentinelId } from './importHistory'
+import { fail } from './pointsLedger'
 
 // ส่วนที่เขียน Firestore ของเครื่องมือนำเข้าประวัติย้อนหลัง — แยกจาก UI และรับ db เป็นพารามิเตอร์ เพื่อทดสอบกับ emulator ได้
 // (importHistoryDb.emulator.test.js) · ตรรกะคำนวณล้วนๆ อยู่ที่ importHistory.js
@@ -26,8 +27,10 @@ export async function importOne(db, item, batchId, cutoff) {
   return out
 }
 
-// ย้อนแถวของชุดนำเข้าของพนักงาน 1 คน (group จาก planRollback: { employeeId, ids, delta }) ใน transaction เดียว
+// ย้อนแถวของชุดนำเข้าของพนักงาน 1 คน (group จาก planRollback: { employeeId, ids, delta, expected }) ใน transaction เดียว
 // ผลต่อยอด = −pointsUsed จึงคืนด้วย +Σ pointsUsed (ไม่ต่ำกว่า 0) — แบบเดียวกับลบแถวในหน้า ประวัติทั้งหมด
+// ⚠️ ถ้ายอดตอนนี้ ≠ ยอดที่ชุดนี้ตั้งไว้ (group.expected) = หลังนำเข้ามีการแลก/ปรับแต้มต่อ → ย้อนแล้วยอดจะผิด (ติดเพดาน 0 / ลบการแลกที่ใช้แต้มชุดนี้ไปแล้ว)
+//    → ไม่ทำอะไร error.code = 'CHANGED' ให้แอดมินจัดการคนนั้นด้วยมือ
 // คืนยอดคงเหลือใหม่ (null = ไม่ได้แตะยอด เช่นพนักงานถูกลบไปแล้ว)
 export async function rollbackOne(db, group) {
   let balance = null
@@ -35,6 +38,16 @@ export async function rollbackOne(db, group) {
     balance = null
     const empRef = doc(db, 'employees', group.employeeId)
     const empSnap = await tx.get(empRef)
+    if (empSnap.exists()) {
+      const current = empSnap.data().points ?? 0
+      if (typeof group.expected === 'number' && current !== group.expected) {
+        throw fail(
+          `ยอดตอนนี้ ${current.toLocaleString()} ไม่ตรงกับยอดหลังนำเข้า ${group.expected.toLocaleString()} ` +
+          `(มีการแลก/ปรับแต้มหลังนำเข้า) — ข้ามคนนี้ ย้อนอัตโนมัติจะทำให้ยอดผิด ให้จัดการด้วยมือ`,
+          'CHANGED',
+        )
+      }
+    }
     if (empSnap.exists() && group.delta !== 0) {
       balance = Math.max(0, (empSnap.data().points ?? 0) + group.delta)
       tx.update(empRef, { points: balance })

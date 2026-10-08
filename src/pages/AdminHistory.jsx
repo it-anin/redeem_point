@@ -4,6 +4,9 @@ import { collection, query, orderBy, getDocs, getCountFromServer, doc, runTransa
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import ImportHistoryModal from '../components/ImportHistoryModal'
+import ReconcilePanel from '../components/ReconcilePanel'
+import { isRejected, spentOf, netUsedOf } from '../pointsLedger'
+import { deleteHistoryRow, editHistoryRow } from '../pointsDb'
 
 // createdAt/at จาก Firestore เป็น Timestamp (มี toDate) แต่รายการที่เพิ่งบันทึกในหน้านี้เก็บเป็น Date ตรงๆ — รองรับทั้งสองแบบ
 const toJsDate = (v) => (v?.toDate ? v.toDate() : v instanceof Date ? v : null)
@@ -31,6 +34,7 @@ export default function AdminHistory() {
   const [addForm, setAddForm] = useState({ employeeId: '', rewardName: '', points: '' })
   const [addErr, setAddErr] = useState('')
   const [importModal, setImportModal] = useState(false) // นำเข้าประวัติย้อนหลังจากระบบเก่า (src/components/ImportHistoryModal.jsx)
+  const [showReconcile, setShowReconcile] = useState(false) // แผง "ตรวจยอดแต้ม" (อ่านอย่างเดียว คำนวณจากข้อมูลที่โหลดไว้แล้ว)
   // เก็บ key พนักงานที่ "เปิด" ดูรายการแลกอยู่ (คลิกชื่อเพื่อเปิด/ปิด)
   const [expanded, setExpanded] = useState(new Set())
   const toggleExpand = (key) => {
@@ -135,46 +139,30 @@ export default function AdminHistory() {
   const saveEdit = async () => {
     if (!editTx) return
     setErrMsg('')
+    const newEffect = Number(editEffect)
+    if (!Number.isFinite(newEffect)) { setErrMsg('แก้ไขไม่สำเร็จ: แต้มต้องเป็นตัวเลข'); return }
     setSaving(true)
     try {
-      const newEffect = Number(editEffect)
-      const oldEffect = -(editTx.pointsUsed ?? 0)
-      const delta = newEffect - oldEffect
-      let balance = null // ยอดแต้มจริงของพนักงานหลังบันทึก (null = ไม่เปลี่ยน)
-      await runTransaction(db, async (tx) => {
-        const txRef = doc(db, 'transactions', editTx.id)
-        let empSnap = null
-        const empRef = editTx.employeeId ? doc(db, 'employees', editTx.employeeId) : null
-        if (empRef) empSnap = await tx.get(empRef)
-
-        // ปรับยอดสะสมของพนักงานตามส่วนต่าง
-        if (empRef && empSnap?.exists() && delta !== 0) {
-          const newPts = Math.max(0, (empSnap.data().points ?? 0) + delta)
-          tx.update(empRef, { points: newPts })
-          balance = newPts
-        }
-        tx.update(txRef, {
-          pointsUsed: -newEffect,
-          note: editNote,
-          rewardName: editReward,
-          editedAt: new Date(),
-        })
+      // ปรับยอดตามส่วนต่างจาก "ค่าล่าสุดในฐานข้อมูล" (ไม่ใช่แถวที่ค้างบนหน้าจอ) และแถวที่ปฏิเสธแล้วไม่ขยับยอด — ดู pointsDb.js
+      const { balance, delta, oldEffect, rejected } = await editHistoryRow(db, editTx.id, {
+        effect: newEffect, rewardName: editReward, note: editNote,
       })
       // อัปเดตแถวในหน้าจอเลย (ไม่โหลดประวัติ/พนักงานทั้งหมดใหม่)
       setTransactions(prev => prev.map(t => (t.id === editTx.id
-        ? { ...t, pointsUsed: -newEffect, note: editNote, rewardName: editReward, editedAt: new Date() }
+        ? { ...t, pointsUsed: 0 - newEffect, note: editNote, rewardName: editReward, editedAt: new Date() }
         : t)))
       if (balance !== null) patchBalance(editTx.employeeId, balance)
       const rewardChanged = (editTx.rewardName ?? '') !== editReward
       await writeLog('แก้ไข', { ...editTx, rewardName: editReward },
         (rewardChanged ? `รางวัล "${editTx.rewardName ?? '-'}" → "${editReward}" · ` : '') +
         `แต้ม ${oldEffect.toLocaleString()} → ${newEffect.toLocaleString()}` +
-        (delta !== 0 ? ` (ปรับยอดพนักงาน ${delta > 0 ? '+' : ''}${delta.toLocaleString()})` : '') +
+        (delta !== 0 ? ` (ปรับยอดพนักงาน ${delta > 0 ? '+' : ''}${delta.toLocaleString()})` : rejected ? ' (แถวที่ปฏิเสธแล้ว ไม่กระทบยอด)' : '') +
         (editNote ? ` · โน้ต: ${editNote}` : ''))
       setEditTx(null)
       setMsg('แก้ไขรายการเรียบร้อย!')
       setTimeout(() => setMsg(''), 3000)
     } catch (e) {
+      if (e.code === 'GONE') { setTransactions(prev => prev.filter(x => x.id !== editTx.id)); setEditTx(null) } // ถูกลบไปแล้ว (แอดมินอีกคน)
       setErrMsg('แก้ไขไม่สำเร็จ: ' + e.message)
     } finally {
       setSaving(false)
@@ -182,45 +170,33 @@ export default function AdminHistory() {
   }
 
   const deleteTx = async (t) => {
-    const refund = t.pointsUsed ?? 0
+    const rejected = isRejected(t)
+    const refund = rejected ? 0 : (t.pointsUsed ?? 0)
     const confirmMsg =
       `ลบรายการนี้?\n${t.employeeName} · ${t.rewardName}\n` +
-      (refund > 0 ? `• คืนแต้ม ${refund.toLocaleString()} ให้พนักงาน\n`
-        : refund < 0 ? `• หักแต้ม ${Math.abs(refund).toLocaleString()} จากพนักงาน\n` : '') +
-      (t.rewardId ? '• คืนสต็อกรางวัล +1' : '')
+      (rejected
+        ? '• รายการนี้ถูกปฏิเสธไปแล้ว (คืนแต้ม/สต็อกให้พนักงานแล้ว) — ลบแถวอย่างเดียว ไม่คืนซ้ำ'
+        : (refund > 0 ? `• คืนแต้ม ${refund.toLocaleString()} ให้พนักงาน\n`
+          : refund < 0 ? `• หักแต้ม ${Math.abs(refund).toLocaleString()} จากพนักงาน\n` : '') +
+          (t.rewardId ? '• คืนสต็อกรางวัล +1' : ''))
     if (!window.confirm(confirmMsg)) return
     setErrMsg('')
     try {
-      let balance = null // ยอดแต้มจริงของพนักงานหลังย้อนผล (null = ไม่เปลี่ยน)
-      await runTransaction(db, async (tx) => {
-        const txRef = doc(db, 'transactions', t.id)
-        const empRef = t.employeeId ? doc(db, 'employees', t.employeeId) : null
-        const rwRef = t.rewardId ? doc(db, 'rewards', t.rewardId) : null
-        const empSnap = empRef ? await tx.get(empRef) : null
-        const rwSnap = rwRef ? await tx.get(rwRef) : null
-
-        // คืนแต้มให้พนักงาน (ย้อนผลของรายการ)
-        if (empRef && empSnap?.exists() && refund !== 0) {
-          const newPts = Math.max(0, (empSnap.data().points ?? 0) + refund)
-          tx.update(empRef, { points: newPts })
-          balance = newPts
-        }
-        // คืนสต็อกรางวัล
-        if (rwRef && rwSnap?.exists()) {
-          tx.update(rwRef, { stock: (rwSnap.data().stock ?? 0) + 1 })
-        }
-        tx.delete(txRef)
-      })
+      // ย้อนผลของแถวนั้นด้วยค่าล่าสุดในฐานข้อมูล: ลบซ้ำจากหน้าค้างไม่คืนซ้ำ และแถวที่ปฏิเสธแล้วไม่คืนแต้ม/สต็อกซ้ำ — ดู pointsDb.js
+      const { balance, refund: refunded, restocked, rejected: wasRejected } = await deleteHistoryRow(db, t.id)
       // เอาแถวออกจากหน้าจอเลย (ไม่โหลดประวัติ/พนักงานทั้งหมดใหม่)
       setTransactions(prev => prev.filter(x => x.id !== t.id))
       if (balance !== null) patchBalance(t.employeeId, balance)
       await writeLog('ลบ', t,
         'ลบรายการ' +
-        (refund > 0 ? ` · คืนแต้ม ${refund.toLocaleString()}` : refund < 0 ? ` · หักแต้ม ${Math.abs(refund).toLocaleString()}` : '') +
-        (t.rewardId ? ' · คืนสต็อก +1' : ''))
-      setMsg('ลบรายการและคืนแต้มเรียบร้อย!')
+        (wasRejected
+          ? ' · แถวที่ปฏิเสธแล้ว ไม่คืนแต้ม/สต็อกซ้ำ'
+          : (refunded > 0 ? ` · คืนแต้ม ${refunded.toLocaleString()}` : refunded < 0 ? ` · หักแต้ม ${Math.abs(refunded).toLocaleString()}` : '') +
+            (restocked ? ' · คืนสต็อก +1' : '')))
+      setMsg(wasRejected ? 'ลบรายการเรียบร้อย (ปฏิเสธไปแล้ว จึงไม่คืนแต้มซ้ำ)' : 'ลบรายการและคืนแต้มเรียบร้อย!')
       setTimeout(() => setMsg(''), 3000)
     } catch (e) {
+      if (e.code === 'GONE') setTransactions(prev => prev.filter(x => x.id !== t.id)) // ถูกลบไปแล้ว (แอดมินอีกคน) — เอาออกจากหน้าจอ ไม่คืนซ้ำ
       setErrMsg('ลบไม่สำเร็จ: ' + e.message)
     }
   }
@@ -281,8 +257,11 @@ export default function AdminHistory() {
     t.rewardName?.toLowerCase().includes(search.toLowerCase())
   )
 
-  const totalPts = filtered.reduce((s, t) => s + (t.pointsUsed ?? 0), 0)
-  const delta = Number(editEffect) - (-(editTx?.pointsUsed ?? 0))
+  // ผลรวมไม่นับแถวที่ปฏิเสธ (คืนแต้มไปแล้ว) — นิยามกลางอยู่ที่ pointsLedger.js ใช้ตรงกันทุกหน้า
+  const totalPts = netUsedOf(filtered)
+  // แถวที่ปฏิเสธแล้วแก้ตัวเลขได้แต่ไม่ขยับยอดแต้ม (ดู pointsDb.editHistoryRow) จึงไม่โชว์กล่อง "ยอดจะถูกปรับ"
+  const editRejected = isRejected(editTx)
+  const delta = editRejected ? 0 : Number(editEffect) - (-(editTx?.pointsUsed ?? 0))
 
   // แยกประวัติเป็นกลุ่มตามพนักงานแต่ละคน (เรียงชื่อ ก-ฮ, รายการในกลุ่มยังเรียงล่าสุดก่อนตามเดิม)
   const grouped = Object.values(
@@ -297,9 +276,11 @@ export default function AdminHistory() {
       ...g,
       // บัญชีจริงใน employees ที่แถวเหล่านี้ผูกอยู่ (undefined = ไม่พบ เช่นถูกลบ/เปลี่ยนอีเมลไปแล้ว) — เอายอดแต้มจริงมาโชว์คู่กับยอดตามประวัติ
       emp: g.employeeId ? empById[g.employeeId] : undefined,
-      subtotal: g.list.reduce((s, t) => s + (t.pointsUsed ?? 0), 0),
-      // แต้มที่ใช้ไปจากการแลกรางวัลจริง (มี rewardId) + รายการที่ admin บันทึกแทนให้ (addedByAdmin) ไม่รวมยอดที่ admin ปรับแต้มธรรมดา — ตรงกับ "แต้มที่ใช้ไป" ในหน้าประวัติของพนักงาน
-      spent: g.list.filter(t => t.rewardId || t.addedByAdmin).reduce((s, t) => s + (t.pointsUsed ?? 0), 0),
+      // สุทธิตามประวัติ: ไม่รวมแถวที่ปฏิเสธ (คืนแต้มไปแล้ว) ไม่งั้นคนที่เคยถูกปฏิเสธจะไม่เท่ากับ "คงเหลือจริง" ทั้งที่ข้อมูลถูก
+      subtotal: netUsedOf(g.list),
+      // แต้มที่ใช้ไป = รายการแลกจริง (มี rewardId) + ที่ admin บันทึกแทนให้ (addedByAdmin, pointsUsed >= 0) ที่ไม่ถูกปฏิเสธ — ไม่รวม admin ปรับแต้ม และไม่รวมแถว
+      // "เพิ่มแต้ม" ของปุ่มเก่า (addedByAdmin แต่ติดลบ) — ตรงกับ "แต้มที่ใช้ไป" ในหน้าประวัติของพนักงาน (นิยามเดียวกันที่ pointsLedger.js)
+      spent: spentOf(g.list),
     }))
     .sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'th'))
 
@@ -320,10 +301,16 @@ export default function AdminHistory() {
         <button className="btn-primary" title="วางประวัติการแลกจากระบบเก่า (Excel) นำเข้าทีเดียวหลายคน พร้อมตั้งยอดคงเหลือให้ตรง" disabled={loading || allEmployees.length === 0} style={{ padding: '8px 16px', fontSize: 13 }} onClick={() => setImportModal(true)}>
           📥 นำเข้าประวัติย้อนหลัง
         </button>
+        <button className="btn-primary" title="เทียบ 'คงเหลือจริง' กับ 'สุทธิตามประวัติ' ของทุกคน — อ่านอย่างเดียว คำนวณจากข้อมูลที่โหลดไว้แล้ว ไม่เพิ่มการอ่านฐานข้อมูล" disabled={loading || allEmployees.length === 0} style={{ padding: '8px 16px', fontSize: 13 }} onClick={() => setShowReconcile(v => !v)}>
+          🔎 ตรวจยอดแต้ม
+        </button>
         <button className="btn-primary" style={{ padding: '8px 16px', fontSize: 13 }} onClick={toggleLogs}>
           📋 บันทึกการแก้ไข ({logsLoaded ? logs.length : (logCount ?? '…')})
         </button>
       </div>
+
+      {/* ตรวจยอดแต้ม — เทียบยอดจริงกับประวัติของทุกคน (อ่านอย่างเดียว) */}
+      {showReconcile && <ReconcilePanel employees={allEmployees} transactions={transactions} onClose={() => setShowReconcile(false)} />}
 
       {/* Audit log */}
       {showLogs && (
@@ -419,16 +406,20 @@ export default function AdminHistory() {
                         {t.imported && <span title="นำเข้าจากระบบเก่า" style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, marginLeft: 6 }}>· นำเข้า</span>}
                         {t.note && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>📝 {t.note}</div>}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--primary-dark)' }}>
+                      <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--primary-dark)', ...(isRejected(t) ? { textDecoration: 'line-through', opacity: 0.5 } : {}) }}>
                         {t.pointsUsed > 0 ? `-${t.pointsUsed?.toLocaleString()}` : `+${Math.abs(t.pointsUsed ?? 0).toLocaleString()}`}
                       </td>
                       <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                         {toJsDate(t.createdAt)?.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) ?? '-'}
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <span className={`badge ${t.status === 'สำเร็จ' ? 'badge-success' : t.status === 'เพิ่มแต้ม' ? 'badge-warn' : 'badge-success'}`}>
-                          {t.status}
-                        </span>
+                        {isRejected(t)
+                          ? <span className="badge badge-danger" title="ปฏิเสธแล้ว — คืนแต้ม/สต็อกให้พนักงานไปแล้ว (ลบ/แก้แถวนี้จะไม่กระทบยอดแต้ม)">ปฏิเสธ</span>
+                          : (
+                            <span className={`badge ${t.status === 'สำเร็จ' ? 'badge-success' : t.status === 'เพิ่มแต้ม' ? 'badge-warn' : 'badge-success'}`}>
+                              {t.status}
+                            </span>
+                          )}
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
@@ -472,6 +463,11 @@ export default function AdminHistory() {
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>รายละเอียด</label>
             <input className="input" value={editNote} onChange={e => setEditNote(e.target.value)} style={{ marginBottom: 16 }} placeholder="เช่น แก้ไขยอดผิด / โบนัสพิเศษ" />
 
+            {editRejected && (
+              <div style={{ background: '#FEF3C7', color: '#92400E', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 12, fontWeight: 700, lineHeight: 1.6 }}>
+                ℹ️ รายการนี้ถูกปฏิเสธแล้ว (คืนแต้ม/สต็อกให้พนักงานไปแล้ว) — แก้ตัวเลขได้ แต่ <u>ไม่กระทบยอดแต้ม</u>
+              </div>
+            )}
             {delta !== 0 && (
               <div style={{ background: delta > 0 ? '#D1FAE5' : '#FEE2E2', color: delta > 0 ? '#065F46' : '#991B1B', padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 13, fontWeight: 700 }}>
                 {delta > 0 ? '➕' : '➖'} ยอดสะสมของพนักงานจะถูกปรับ {delta > 0 ? '+' : ''}{delta.toLocaleString()} แต้ม

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { collection, getDocs, doc, getDoc, runTransaction, query, where } from 'firebase/firestore'
+import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { redeemReward } from '../pointsDb'
 
 // อัปโหลดรูปขึ้น Cloudinary (unsigned) แล้วคืน URL
 async function uploadToCloudinary(file) {
@@ -177,44 +178,9 @@ export default function Dashboard() {
         proofUrl = await uploadToCloudinary(proofFile)
       }
 
-      // จองที่อยู่ + ID ของเอกสารประวัติไว้ก่อน (ยังไม่เขียน) เพื่อใช้ tx.set ในก้อนเดียวกัน
-      const txRef = doc(collection(db, 'transactions'))
-      let newPoints
-      await runTransaction(db, async (tx) => {
-        const empRef = doc(db, 'employees', user.email)
-        const rwRef  = doc(db, 'rewards', reward.id)
-        const empSnap = await tx.get(empRef)
-        const rwSnap  = await tx.get(rwRef)
-
-        if (!empSnap.exists()) throw new Error('ไม่พบข้อมูลพนักงาน')
-        if (!rwSnap.exists())  throw new Error('ไม่พบรางวัล')
-
-        const pts       = empSnap.data().points
-        const stock     = rwSnap.data().stock
-        const unlimited = rwSnap.data().unlimited
-
-        if (pts < reward.pointCost)        throw new Error('แต้มไม่พอ')
-        if (!unlimited && stock < 1)       throw new Error('ของหมดแล้ว')
-
-        newPoints = pts - reward.pointCost
-        tx.update(empRef, { points: newPoints })
-        // รางวัลไม่จำกัด ไม่ต้องหักสต็อก
-        if (!unlimited) tx.update(rwRef, { stock: stock - 1 })
-
-        // บันทึกประวัติในก้อนเดียวกัน → atomic กับการหักแต้ม/สต็อก
-        // (createdAt ใช้ new Date เพราะ serverTimestamp ใช้ใน transaction ไม่ได้)
-        tx.set(txRef, {
-          employeeId:   user.email,
-          employeeName: profile.name,
-          rewardId:     reward.id,
-          rewardName:   reward.name,
-          pointsUsed:   reward.pointCost,
-          createdAt:    new Date(),
-          status:       'สำเร็จ',
-          approval:     'รออนุมัติ',
-          ...(proofUrl ? { proofUrl } : {}),
-        })
-      })
+      // หัก "แต้ม + สต็อก + สร้างประวัติ" ใน transaction เดียว (atomic) — ดู pointsDb.js
+      // ราคาที่หักใช้ค่าล่าสุดในฐานข้อมูล: ถ้าแอดมินเพิ่งแก้ราคาระหว่างที่หน้านี้เปิดค้าง จะไม่หัก (error.code = 'PRICE_CHANGED')
+      const { newPoints } = await redeemReward(db, { email: user.email, name: profile.name, reward, proofUrl })
 
       // อัปเดตแต้มในหน้าจอทันที ไม่ต้อง refresh
       patchProfile({ points: newPoints })
@@ -232,6 +198,12 @@ export default function Dashboard() {
         setErrMsg('')
         setSoldOut(true)
         fetchRewards() // รีเฟรชสต็อกให้ปุ่มกลายเป็น "หมดแล้ว"
+      } else if (e.code === 'PRICE_CHANGED') {
+        // แอดมินเพิ่งแก้ราคา → ปิดกล่องยืนยัน แจ้งที่หน้าหลัก แล้วโหลดรางวัลใหม่ให้เห็นราคาล่าสุดก่อนกดแลกอีกครั้ง
+        setRedeeming(null)
+        setProofFile(null)
+        setErrMsg(e.message)
+        fetchRewards()
       } else {
         setErrMsg(e.message)
       }

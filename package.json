@@ -13,7 +13,8 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "react-scripts test"
+    "test": "react-scripts test",
+    "test:emulator": "firebase emulators:exec --only auth,firestore --project demo-anin-reward --config firebase.emulator.json \"node --no-warnings --import ./emulator-tests/register.mjs ./emulator-tests/run.mjs\""
   },
   "browserslist": {
     "production": [

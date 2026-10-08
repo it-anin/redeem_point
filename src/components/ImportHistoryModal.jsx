@@ -132,7 +132,8 @@ export default function ImportHistoryModal({ employees, transactions, onClose, o
     if (!window.confirm(
       `ย้อนการนำเข้าชุด ${when}?\n` +
       `• ลบ ${b.rows} แถว ของ ${b.employees} คน\n` +
-      `• คืนยอดแต้มของแต่ละคนกลับ (ไม่ต่ำกว่า 0)\n\nยืนยัน?`
+      `• คืนยอดแต้มของแต่ละคนกลับ (ไม่ต่ำกว่า 0)\n` +
+      `• คนที่ยอดเปลี่ยนหลังนำเข้า (มีการแลก/ปรับแต้มต่อ) จะถูกข้ามและแจ้งให้ — ย้อนอัตโนมัติจะทำให้ยอดผิด\n\nยืนยัน?`
     )) return
     setRollingBack(b.batchId)
     setBatchMsg(null)

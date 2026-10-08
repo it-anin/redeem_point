@@ -316,6 +316,21 @@ describe('ชุดนำเข้า / ย้อนการนำเข้า'
     ])
   })
 
+  test('planRollback.expected = ยอดที่ชุดตั้งไว้ (ยอดยกมา + รายการแลก ไม่นับแถวล้างยอดเดิม) และตามไปเมื่อแถวของชุดถูกแก้/ลบทีหลัง', () => {
+    const it = only('E002\tของ\t1500\t500\nE002\tเสื้อ\t1500\t200') // E002 ยอดเดิม 300 → มีแถวล้างยอดเดิมด้วย
+    const { points, rows } = buildLedger(it, { current: 300, batchId: 'imp-x', cutoff: noon(2025, 12, 31) })
+    const txs = rows.map((r, i) => ({ id: r.id ?? `auto${i}`, ...r.data }))
+    const [g] = planRollback(txs, 'imp-x')
+    expect(points).toBe(800)
+    expect(g.expected).toBe(800) // = ยอดหลังนำเข้า (ไม่รวมแถวล้างยอดเดิม)
+
+    // แอดมินแก้แถวรายการแลกหนึ่งแถว +100 ทีหลัง (ยอดจริงลดลงตามคู่กัน → 700) → expected ตามไปเป็น 700
+    const edited = txs.map((t) => (t.rewardName === 'ของ' ? { ...t, pointsUsed: 600 } : t))
+    expect(planRollback(edited, 'imp-x')[0].expected).toBe(700)
+    // แอดมินลบแถวรายการแลกหนึ่งแถว (คืนแต้ม 200 → ยอดจริง 1000) → expected = 1000
+    expect(planRollback(txs.filter((t) => t.rewardName !== 'เสื้อ'), 'imp-x')[0].expected).toBe(1000)
+  })
+
   test('นำเข้า (ยอดเดิม 300) แล้วย้อน → ยอดกลับเป็น 300 เท่าเดิม', () => {
     const it = only('E002\tของ\t1500\t500\nE002\tเสื้อ\t1500\t200')
     const { points, rows } = buildLedger(it, { current: 300, batchId: 'imp-x', cutoff: noon(2025, 12, 31) })

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { act as domAct } from 'react-dom/test-utils'
 import ImportHistoryModal from './ImportHistoryModal'
 import { importOne, rollbackOne } from '../importHistoryDb'
+import { getDocs } from 'firebase/firestore'
 
 const act = React.act ?? domAct // React 18.3+ ย้าย act มาที่ react (ตัวใน react-dom/test-utils ขึ้น deprecation warning)
 
@@ -28,6 +29,7 @@ beforeEach(() => {
   onChanged = jest.fn(async () => {})
   onClose = jest.fn()
   window.confirm = jest.fn(() => true)
+  getDocs.mockResolvedValue({ docs: [] }) // รายชื่อรอผูกบัญชี (CRA resetMocks ล้าง implementation ในตัว mock ทุกเทสต์ ต้องตั้งใหม่)
 })
 afterEach(() => {
   act(() => root.unmount())
@@ -178,13 +180,47 @@ test('ย้อนการนำเข้าทั้งชุด: rollbackOne 
   await click(button('↩️ ย้อนชุดนี้'))
 
   expect(rollbackOne).toHaveBeenCalledTimes(2)
-  expect(rollbackOne.mock.calls.map(([, g]) => [g.employeeId, g.ids, g.delta])).toEqual([
-    ['alice@x.com', ['imp_alice@x.com', 't1'], -1300],
-    ['bob@x.com', ['imp_bob@x.com'], -1000],
+  expect(rollbackOne.mock.calls.map(([, g]) => [g.employeeId, g.ids, g.delta, g.expected])).toEqual([
+    ['alice@x.com', ['imp_alice@x.com', 't1'], -1300, 1300],
+    ['bob@x.com', ['imp_bob@x.com'], -1000, 1000],
   ])
   const payload = onChanged.mock.calls[0][0]
   expect(payload.removedIds.sort()).toEqual(['imp_alice@x.com', 'imp_bob@x.com', 't1'])
   expect(payload.balances).toEqual({ 'alice@x.com': 0, 'bob@x.com': 450 })
   expect(payload.log.action).toBe('import_rollback')
   expect(text()).toContain('ย้อนการนำเข้าเรียบร้อย')
+})
+
+test('พนักงานที่ยังรอผูกบัญชีถูกข้ามพร้อมบอกเหตุผล (อ่าน pendingEmployees สำเร็จ ไม่ขึ้นข้อความว่าอ่านไม่ได้)', async () => {
+  getDocs.mockResolvedValue({ docs: [{ id: 'E099', data: () => ({ name: 'ใหม่ ยังไม่ผูก' }) }] })
+  await render()
+  await fill({ text: row('E099', 'ของ', 1000, 100) })
+  await click(button('ตรวจสอบข้อมูล'))
+  expect(text()).toContain('ยังไม่ผูกบัญชี (รหัส E099)')
+  expect(text()).not.toContain('อ่านรายชื่อ "รอผูกบัญชี" ไม่ได้')
+  expect(button('📥 นำเข้า').disabled).toBe(true)
+})
+
+test('อ่านรายชื่อรอผูกบัญชีไม่ได้ → ตรวจต่อได้ แต่เตือนว่า "ไม่พบ" อาจเป็นคนที่ยังไม่ผูกบัญชี', async () => {
+  getDocs.mockRejectedValue(new Error('quota'))
+  await render()
+  await fill({ text: row('E099', 'ของ', 1000, 100) })
+  await click(button('ตรวจสอบข้อมูล'))
+  expect(text()).toContain('ไม่พบพนักงาน "E099"')
+  expect(text()).toContain('อ่านรายชื่อ "รอผูกบัญชี" ไม่ได้')
+})
+
+test('ย้อนชุดแต่ยอดเปลี่ยนหลังนำเข้า (CHANGED): ข้ามคนนั้นพร้อมเหตุผล ไม่ลบแถว ไม่เขียน log', async () => {
+  rollbackOne.mockRejectedValue(Object.assign(new Error('ยอดตอนนี้ 220 ไม่ตรงกับยอดหลังนำเข้า 320 (มีการแลก/ปรับแต้มหลังนำเข้า) — ข้ามคนนี้'), { code: 'CHANGED' }))
+  const batch = 'imp-20261007153005-ab12'
+  const transactions = [
+    { id: 'imp_alice@x.com', employeeId: 'alice@x.com', employeeName: 'Alice', importBatch: batch, pointsUsed: -2290 },
+    { id: 't1', employeeId: 'alice@x.com', employeeName: 'Alice', importBatch: batch, pointsUsed: 1970 },
+  ]
+  await render({ transactions })
+  await click(button('↩️ ย้อนชุดนี้'))
+  expect(rollbackOne).toHaveBeenCalledTimes(1)
+  expect(onChanged).not.toHaveBeenCalled()
+  expect(text()).toContain('ไม่สำเร็จ 1 คน')
+  expect(text()).toContain('Alice: ยอดตอนนี้ 220 ไม่ตรงกับยอดหลังนำเข้า 320')
 })

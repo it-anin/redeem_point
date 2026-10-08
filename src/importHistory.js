@@ -309,13 +309,17 @@ export function listBatches(transactions) {
 }
 
 // แถวของชุดนั้นแยกตามพนักงาน + ส่วนต่างที่ต้องคืนยอด (delta = Σ pointsUsed ของแถวชุดนั้น; ผลต่อยอด = −pointsUsed จึงย้อนด้วย +delta แบบเดียวกับลบแถวใน AdminHistory)
+// expected = ยอดที่ "ควรเป็นตอนนี้" ถ้าหลังนำเข้าไม่มีใครแตะยอดอีก = ผลของแถวยอดยกมา + รายการแลกของชุด (แถว "ล้างยอดเดิม" แค่ทำยอดเดิมเป็น 0 ก่อนนำเข้า จึงไม่นับ)
+//   คำนวณจากแถวปัจจุบันของชุด (ไม่ใช่ค่าที่เก็บไว้ตอนนำเข้า) จึงใช้ได้กับชุดที่นำเข้าไปแล้ว และตามไปเมื่อแอดมินแก้/ลบแถวของชุดทีหลัง (ยอดกับแถวขยับคู่กัน)
+//   rollbackOne ใช้เทียบกับยอดจริง: ไม่เท่ากัน = มีการแลก/ปรับแต้มหลังนำเข้า → ย้อนไม่ได้ (กันยอดผิด/ติดเพดาน 0)
 export function planRollback(transactions, batchId) {
   const byEmp = new Map()
   for (const t of transactions) {
     if (t.importBatch !== batchId) continue
-    const g = byEmp.get(t.employeeId) ?? { employeeId: t.employeeId, employeeName: t.employeeName ?? '', ids: [], delta: 0 }
+    const g = byEmp.get(t.employeeId) ?? { employeeId: t.employeeId, employeeName: t.employeeName ?? '', ids: [], delta: 0, expected: 0 }
     g.ids.push(t.id)
     g.delta += t.pointsUsed ?? 0
+    if (!(t.rewardName === CLEAR_NAME && !t.addedByAdmin)) g.expected -= t.pointsUsed ?? 0
     byEmp.set(t.employeeId, g)
   }
   return [...byEmp.values()]
