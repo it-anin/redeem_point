@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { createRoot } from 'react-dom/client'
 import { act as domAct } from 'react-dom/test-utils'
-import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore'
+import { collection, getDocs, doc, onSnapshot, query, where } from 'firebase/firestore'
 import Dashboard from './Dashboard'
 import { redeemReward } from '../pointsDb'
 
@@ -11,7 +11,7 @@ const mockAuth = { profile: null, user: { email: 'alice@x' }, patchProfile: jest
 jest.mock('../firebase', () => ({ db: { fake: 'db' } }))
 jest.mock('../context/AuthContext', () => ({ useAuth: () => mockAuth }))
 jest.mock('firebase/firestore', () => ({
-  collection: jest.fn(), getDocs: jest.fn(), doc: jest.fn(), getDoc: jest.fn(), query: jest.fn(), where: jest.fn(),
+  collection: jest.fn(), getDocs: jest.fn(), doc: jest.fn(), onSnapshot: jest.fn(), query: jest.fn(), where: jest.fn(),
 }))
 jest.mock('../pointsDb', () => ({ redeemReward: jest.fn() }))
 
@@ -20,6 +20,9 @@ const act = React.act ?? domAct
 
 const SHIRT = { name: 'เสื้อ', pointCost: 300, stock: 5, unlimited: false, type: 'normal' }
 let container, root
+// settings/redeem ที่หน้านี้ฟังอยู่ (onSnapshot): settingsData = ค่าที่ส่งให้ตอนเริ่มฟัง, settingsListeners = ตัวรับค่าใหม่ตอนแอดมินบันทึก
+let settingsData, settingsListeners
+const settingsSnap = (data) => ({ exists: () => !!data, data: () => data })
 beforeEach(() => {
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -30,7 +33,14 @@ beforeEach(() => {
   query.mockImplementation((c) => c)
   where.mockImplementation(() => ({}))
   doc.mockImplementation((db, name, id) => ({ __name: name, id }))
-  getDoc.mockResolvedValue({ exists: () => true, data: () => ({ open: true, enabled: false }) }) // เปิดแลกตลอด (ไม่ขึ้นกับเวลาที่รันเทสต์)
+  settingsData = { open: true, enabled: false } // เปิดแลกตลอด (ไม่ขึ้นกับเวลาที่รันเทสต์)
+  settingsListeners = []
+  onSnapshot.mockImplementation((ref, onNext) => {
+    if (ref.__name !== 'settings') return () => {}
+    settingsListeners.push(onNext)
+    onNext(settingsSnap(settingsData))
+    return () => { settingsListeners = settingsListeners.filter((fn) => fn !== onNext) }
+  })
   getDocs.mockImplementation(async (q) => ({
     docs: q.__name === 'rewards' ? [{ id: 'r1', data: () => SHIRT }] : [],
   }))
@@ -38,6 +48,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount())
   container.remove()
+  jest.useRealTimers()
 })
 
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)) })
@@ -106,4 +117,76 @@ test('แต้มบนหน้าจอไม่พอ: กดแล้วเ
   expect(redeemReward).not.toHaveBeenCalled()
   expect(text()).not.toContain('ยืนยันการแลก?')
   expect(text()).toContain('แต้มไม่พอ!')
+})
+
+// ── ปุ่มเปลี่ยนตามเวลา / ตามที่แอดมินตั้ง โดยไม่ต้องรีเฟรช (ตรรกะเวลา: redeemWindow.test.js, useRedeemOpen.test.js) ──
+const thai = (y, m, d, h = 0, mi = 0, s = 0, ms = 0) => Date.UTC(y, m - 1, d, h - 7, mi, s, ms)
+const LOCK_15 = { open: true, enabled: true, hour: 15, minute: 0, dateY: 0, dateM: 0, dateD: 0 }
+// แอดมินบันทึกค่าใหม่ลง settings/redeem → ตัวฟังของหน้านี้ได้รับค่า (เหมือน onSnapshot จริง)
+const adminSets = (data) => act(async () => { settingsListeners.forEach((fn) => fn(settingsSnap(data))) })
+// เทสต์ที่ใช้นาฬิกาปลอม: flush() แบบ setTimeout จริงใช้ไม่ได้ → ไล่ microtask แทน (mock ทั้งหมดเป็น promise ที่ resolve แล้ว)
+const flushMicro = async () => { for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve() }) }
+const renderAt = async (nowMs, cfg) => {
+  jest.useFakeTimers()
+  jest.setSystemTime(nowMs)
+  settingsData = cfg
+  await act(async () => { root.render(<Dashboard />) })
+  await flushMicro()
+}
+const advance = (ms) => act(() => { jest.advanceTimersByTime(ms) })
+
+test('แอดมินกด "ปิดการแลก" ขณะที่หน้านี้เปิดค้าง: ปุ่มเปลี่ยนเป็น "🔴 งดแลกชั่วคราว" เอง แล้ว "เปิดให้แลก" → กลับเป็น "แลกเลย!" (ไม่โหลดรางวัลใหม่)', async () => {
+  await render()
+  const loadsBefore = rewardLoads()
+  expect(exact('แลกเลย!').disabled).toBe(false)
+
+  await adminSets({ open: false, enabled: false })
+  expect(exact('🔴 งดแลกชั่วคราว').disabled).toBe(true)
+  expect(exact('แลกเลย!')).toBeUndefined()
+
+  await adminSets({ open: true, enabled: false })
+  expect(exact('แลกเลย!').disabled).toBe(false)
+  expect(rewardLoads()).toBe(loadsBefore) // ปุ่มเปลี่ยนจากค่าสดอย่างเดียว ไม่ได้ยิงคิวรีรางวัลซ้ำ
+})
+
+test('ฟังการตั้งค่าตลอดที่อยู่ในหน้านี้ และเลิกฟังเมื่อออกจากหน้า (ไม่ทิ้ง listener ค้าง)', async () => {
+  await render()
+  expect(settingsListeners).toHaveLength(1)
+  act(() => root.unmount())
+  expect(settingsListeners).toHaveLength(0)
+  root = createRoot(container) // afterEach จะ unmount อีกรอบ
+})
+
+test('แอดมินเลื่อนเวลาเปิดแลก / ปิดล็อกเวลา ขณะที่หน้านี้เปิดค้าง: ป้ายบนปุ่มเปลี่ยนตามทันที', async () => {
+  await renderAt(thai(2026, 10, 12, 10, 0), LOCK_15)
+  expect(exact('⏰ เปิดแลก 15:00 น.').disabled).toBe(true)
+
+  await adminSets({ ...LOCK_15, hour: 16, minute: 30 })
+  expect(exact('⏰ เปิดแลก 16:30 น.').disabled).toBe(true)
+  expect(exact('⏰ เปิดแลก 15:00 น.')).toBeUndefined()
+
+  await adminSets({ ...LOCK_15, enabled: false })
+  expect(exact('แลกเลย!').disabled).toBe(false)
+})
+
+test('ถึงเวลาเปิดแลกพอดี: ปุ่มเปลี่ยนจาก "⏰ เปิดแลก 15:00 น." เป็น "แลกเลย!" เองทันที (ไม่รอรอบเช็ค 30 วิ ไม่ต้องรีเฟรช) แล้วกดแลกต่อได้', async () => {
+  await renderAt(thai(2026, 10, 12, 14, 59, 50), LOCK_15)
+  expect(exact('⏰ เปิดแลก 15:00 น.').disabled).toBe(true)
+
+  await advance(9999) // 14:59:59.999
+  expect(exact('⏰ เปิดแลก 15:00 น.').disabled).toBe(true)
+  await advance(1)    // 15:00:00.000
+  expect(exact('แลกเลย!').disabled).toBe(false)
+  expect(rewardLoads()).toBe(1) // โหลดรางวัลแค่ตอนเปิดหน้า — ไม่ได้รีเฟรช
+
+  await act(async () => { exact('แลกเลย!').dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+  await flushMicro()
+  expect(text()).toContain('ยืนยันการแลก?')
+})
+
+test('ล็อกเวลาใช้เวลาไทย (UTC+7) เหมือน Firestore Rules: 08:00 UTC = 15:00 น. เปิดพอดี', async () => {
+  await renderAt(Date.UTC(2026, 9, 12, 7, 59, 59, 0), LOCK_15)
+  expect(exact('⏰ เปิดแลก 15:00 น.').disabled).toBe(true)
+  await advance(1000) // 08:00:00.000 UTC
+  expect(exact('แลกเลย!').disabled).toBe(false)
 })

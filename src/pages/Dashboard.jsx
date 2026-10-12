@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore'
+import { collection, getDocs, doc, onSnapshot, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { redeemReward } from '../pointsDb'
+import { useRedeemOpen } from '../useRedeemOpen'
 
 // อัปโหลดรูปขึ้น Cloudinary (unsigned) แล้วคืน URL
 async function uploadToCloudinary(file) {
@@ -22,16 +23,6 @@ async function uploadToCloudinary(file) {
 // dateY/dateM/dateD = 0 → ไม่จำกัดวัน (ทุกวัน); ถ้ากำหนด → เปิดเฉพาะวันนั้น
 const DEFAULT_REDEEM_CFG = { open: true, enabled: true, hour: 15, minute: 0, dateY: 0, dateM: 0, dateD: 0 }
 
-// เปิดให้แลกตอนนี้ไหม? (เทียบเวลาเครื่อง — ฝั่ง server มี Firestore Rules กันอีกชั้น)
-function isOpenNow(cfg) {
-  if (!cfg?.enabled) return true
-  const now = new Date()
-  // ถ้ากำหนดวันเจาะจง → ต้องตรงวันนั้น (getMonth() เป็น 0-based จึง +1)
-  if (cfg.dateY) {
-    if (now.getFullYear() !== cfg.dateY || (now.getMonth() + 1) !== cfg.dateM || now.getDate() !== cfg.dateD) return false
-  }
-  return now.getHours() * 60 + now.getMinutes() >= (cfg.hour || 0) * 60 + (cfg.minute || 0)
-}
 const pad2 = (n) => String(n ?? 0).padStart(2, '0')
 const fmtTime = (cfg) => `${pad2(cfg?.hour)}:${pad2(cfg?.minute)}`
 // ป้ายบนปุ่ม: ถ้ามีวันเจาะจง โชว์ "DD/MM HH:MM" ไม่งั้นโชว์แค่เวลา
@@ -58,12 +49,21 @@ export default function Dashboard() {
   const [approvedList, setApprovedList] = useState([]) // รางวัลที่เพิ่งได้รับการอนุมัติ
   // เวลาเปิดแลก (อ่านจาก settings/redeem ที่ admin ตั้ง) + สถานะเปิด/ปิดตอนนี้
   const [redeemCfg, setRedeemCfg] = useState(DEFAULT_REDEEM_CFG)
-  const [redeemOpen, setRedeemOpen] = useState(() => isOpenNow(DEFAULT_REDEEM_CFG))
+  const redeemOpen = useRedeemOpen(redeemCfg) // ล็อกเวลา: ปุ่มเปลี่ยนพอดีเวลาเอง (master switch อ่านจาก redeemCfg.open แยกต่างหาก)
 
   useEffect(() => {
     fetchRewards()
     loadMyTransactions({ notifyApproved: true })
-    fetchRedeemCfg()
+  }, [])
+
+  // ฟัง settings/redeem แบบ realtime — แอดมินแก้เวลา/กด "เปิด-ปิดการแลกทันที" แล้วปุ่มบนมือถือที่เปิดค้างอยู่เปลี่ยนตามเอง ไม่ต้องรีเฟรช
+  // (เดิม getDoc ครั้งเดียวตอนเปิดหน้า; ตอนนี้อ่าน 1 ครั้งตอนเปิด + 1 ครั้งต่อทุกครั้งที่แอดมินบันทึก)
+  useEffect(() => {
+    return onSnapshot(
+      doc(db, 'settings', 'redeem'),
+      (snap) => setRedeemCfg({ ...DEFAULT_REDEEM_CFG, ...snap.data() }), // เอกสารไม่มี → data() = undefined → ใช้ค่า default
+      () => { /* อ่านไม่ได้ชั่วคราว (เน็ตหลุด/โควตา) → คงค่าเดิมไว้ */ }
+    )
   }, [])
 
   // แต้มเปลี่ยน (admin เพิ่ม/หัก หรือเราแลกเอง — profile อัปเดตสดจาก AuthContext) → โหลดรายการของเราใหม่
@@ -74,21 +74,6 @@ export default function Dashboard() {
     lastPoints.current = profile?.points
     loadMyTransactions({ notifyApproved: false })
   }, [profile?.points])
-
-  // เช็คเวลาเปิดแลกใหม่ทุก 30 วิ (และทุกครั้งที่ cfg เปลี่ยน) ให้ปุ่มเปิด/ปิดเองตามเวลา
-  useEffect(() => {
-    const tick = () => setRedeemOpen(isOpenNow(redeemCfg))
-    tick()
-    const id = setInterval(tick, 30000)
-    return () => clearInterval(id)
-  }, [redeemCfg])
-
-  const fetchRedeemCfg = async () => {
-    try {
-      const snap = await getDoc(doc(db, 'settings', 'redeem'))
-      if (snap.exists()) setRedeemCfg(c => ({ ...c, ...snap.data() }))
-    } catch { /* ใช้ค่า default */ }
-  }
 
   // ดึงรายการของพนักงานคนนี้ "ครั้งเดียว" แล้วใช้ทำทั้ง popup "แต้มที่ได้รับเดือนนี้" และ popup "อนุมัติแล้ว!"
   // (เดิมยิงคิวรีเดียวกันสองรอบทุกครั้งที่เปิดหน้าหลัก — กินโควตาอ่านฟรีรายวันของ Firestore เป็นสองเท่า)
