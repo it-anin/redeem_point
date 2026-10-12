@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { isDesktopDevice } from '../deviceCheck'
 
 export default function Login() {
   const { user, loginWithGoogle, linkWithCode, logout, pendingUser, authError } = useAuth()
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [code, setCode] = useState('')
+  // เปิดบนคอมพิวเตอร์ → เตือนพนักงานก่อนกดล็อกอิน (ไม่ปิดปุ่ม เพราะแอดมินต้องล็อกอินบน desktop; การบล็อกจริงอยู่ที่ DeviceGate หลังรู้ role)
+  const [desktop] = useState(() => isDesktopDevice())
 
   // ล็อกไม่ให้หน้า login เลื่อนขึ้น/ลง (คืนค่าเดิมเมื่อออกจากหน้า)
   useEffect(() => {
@@ -156,6 +159,12 @@ export default function Login() {
             </>
           )}
         </div>
+
+        {desktop && !pendingUser && (
+          <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, marginTop: 12, lineHeight: 1.6 }}>
+            💻 พนักงานกรุณาเปิดผ่านมือถือ<br />(แอดมินเข้าสู่ระบบได้ตามปกติ)
+          </div>
+        )}
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
 # Cream Rewards — ระบบสะสมแต้มแลกรางวัลพนักงาน
 
 เว็บแอปสะสมแต้ม/แลกรางวัลของพนักงาน แบ่งผู้ใช้เป็น 2 บทบาท:
-- **พนักงาน (employee)** → ใช้งานแบบ **มือถือ (mobile)** เสมอทุกขนาดจอ
+- **พนักงาน (employee)** → ใช้งานแบบ **มือถือ (mobile)** เสมอทุกขนาดจอ — **เปิดบนคอมพิวเตอร์ไม่ได้** (ถูกบล็อกที่ `DeviceGate` หลังล็อกอิน ดูหัวข้อ "บล็อกพนักงานบนคอมพิวเตอร์")
 - **แอดมิน/HR (admin)** → ใช้งานแบบ **เดสก์ท็อป (desktop)** มี sidebar
 
 ---
@@ -68,7 +68,7 @@ public/                 # รูปไอคอน/โลโก้ (icon.png, Ho
 emulator-tests/         # เทสต์ Firestore emulator ด้วยโค้ดจริง + firestore.rules จริง (run.mjs) — `npm run test:emulator`; config = firebase.emulator.json (แยกจาก firebase.json ที่ใช้ deploy)
 src/
   index.js, index.css   # entry + CSS+theme ทั้งหมด (ตัวแปรสี + คลาส utility)
-  App.jsx               # router + guard (RequireAuth / RequireAdmin)
+  App.jsx               # router + guard (RequireAuth / DeviceGate / RequireAdmin)
   firebase.js           # init firebase (auth, db)
   cloudinary.js         # uploadFileToCloudinary() — รูป/PDF
   announcementsCache.js # cache id ประกาศในหน่วยความจำ (อ่านครั้งเดียวต่อรอบเปิดแอป) — ใช้นับเลขแดงที่ BottomNav
@@ -76,12 +76,14 @@ src/
   importHistoryDb.js    # ส่วนเขียน Firestore ของเครื่องมือนำเข้า: importOne / rollbackOne (รับ db เป็นพารามิเตอร์)
   pointsLedger.js       # ตรรกะล้วน "แถวใน transactions แต่ละแบบมีผลต่อยอดอย่างไร" (isRedemption / isRejected / spentOf / netUsedOf / reconcile) — ทุกหน้าใช้นิยามเดียวกัน; มี pointsLedger.test.js
   pointsDb.js           # ทุก transaction ที่เปลี่ยนยอดแต้มผูกกับแถวประวัติ: redeemReward / approveRedemption / rejectRedemption / deleteHistoryRow / editHistoryRow (รับ db) — ทดสอบที่ emulator-tests/
+  deviceCheck.js        # ตรรกะล้วน isDesktopDevice(): เป็นคอมพิวเตอร์ไหม (UA + touch/pointer; มีสัญญาณมือถืออย่างใดอย่างหนึ่ง = ผ่าน) — มี deviceCheck.test.js
   context/AuthContext.jsx
   components/
     Layout.jsx          # ตัวกำหนด desktop sidebar vs mobile (forceMobile)
     Sidebar.jsx         # Sidebar / MobileNav (drawer) / BottomNav
     ImportHistoryModal.jsx # โมดัลนำเข้าประวัติย้อนหลัง (เรียกจาก AdminHistory) — มี ImportHistoryModal.test.js
     ReconcilePanel.jsx  # แผง "🔎 ตรวจยอดแต้ม" ในหน้า ประวัติทั้งหมด (อ่านอย่างเดียว) — มี ReconcilePanel.test.js
+    DeviceGate.jsx      # ด่านบล็อกพนักงานที่เปิดบนคอมพิวเตอร์ (ครอบ <Layout /> ใน App.jsx) + หน้า "ใช้งานผ่านมือถือเท่านั้น" — มี DeviceGate.test.js
   pages/
     Login.jsx
     Dashboard.jsx       # [mobile] หน้าหลักพนักงาน — แลกรางวัล
@@ -115,6 +117,21 @@ src/
 - **ขั้นผูกบัญชีครั้งแรก** — ใช้รูป `linkcard.png` เป็นพื้น + **ช่องกรอกรหัสซ้อนทับบนรูป** (`position: absolute`, ปรับ `bottom`/`width`/`padding`/`fontSize` ให้ตรงช่องว่างในรูป); รหัสบังคับ **ตัวพิมพ์ใหญ่เสมอ** (`toUpperCase()` + `textTransform: uppercase`); **ไม่มีปุ่มยืนยัน** — กด Enter ในช่องเพื่อ submit (ขึ้น "กำลังผูกบัญชี..." ตอนโหลด) + ปุ่ม "← ใช้บัญชี Google อื่น"
 - **iconmove.webp ซ้อนทับบนการ์ด** (marginBottom ติดลบ) ให้การ์ตูนนั่งบนการ์ด
 - **ล็อกไม่ให้หน้า login เลื่อน** — `useEffect` ตั้ง `body.overflow = hidden` ตอนเข้าหน้า (คืนค่าเมื่อออก) + container `height: 100dvh; overflow: hidden`
+
+---
+
+## 🚫 บล็อกพนักงานบนคอมพิวเตอร์ (DeviceGate)
+
+พนักงาน (`role !== 'admin'`) ที่เปิดเว็บบน **คอมพิวเตอร์ตั้งโต๊ะ/โน้ตบุ๊ก** จะเห็นหน้า "ใช้งานผ่านมือถือเท่านั้นนะ" (ลิงก์ + ปุ่มคัดลอก + ปุ่มออกจากระบบ) แทนแอป — **แอดมินใช้ desktop ได้ตามปกติ**
+
+- **ตัดสินหลังล็อกอิน** (`components/DeviceGate.jsx` ครอบ `<Layout />` ใน `App.jsx`) เพราะก่อนล็อกอินยังไม่รู้ role — ถ้าบล็อกที่หน้า login จะล็อกแอดมินออกด้วย; หน้า login บนคอมแค่ขึ้นข้อความเตือนใต้การ์ด ("💻 พนักงานกรุณาเปิดผ่านมือถือ") **ไม่ปิดปุ่มล็อกอิน**
+- **ตรวจอุปกรณ์** (`deviceCheck.js` → `isDesktopDevice()`): มีสัญญาณ "มือถือ/แท็บเล็ต" **อย่างใดอย่างหนึ่ง = ผ่าน** — (1) UA / `userAgentData.mobile` เป็นมือถือ (`Android|iPhone|iPad|iPod|Mobile|…`) (2) iPadOS ที่ขอเว็บเดสก์ท็อป (UA เป็น Macintosh แต่ `maxTouchPoints > 1`) (3) ตัวชี้หลักเป็นนิ้ว `(pointer: coarse)` หรือ `(hover: none)` (ครอบคลุมมือถือที่กด "ขอเว็บเวอร์ชันเดสก์ท็อป" ซึ่ง UA เป็น desktop) — ตั้งใจหละหลวมฝั่งผ่าน เพราะบล็อกมือถือจริงผิดพลาดแย่กว่าปล่อยคนที่จงใจปลอมตัว
+  - แท็บเล็ต = ผ่าน · โน้ตบุ๊กจอทัช (ตัวชี้หลักเป็นเมาส์/ทัชแพด) = ถูกบล็อก · **ห้ามตัดสินจากความกว้างจอ** (หน้าต่างคอมย่อได้ / มือถือแนวนอนกว้าง)
+- **แอดมินผ่านเสมอ** รวมถึงใน iframe พรีวิว (`/admin/preview` → `?preview=employee` — ในนั้น profile ก็เป็นแอดมิน) และด่าน **ไม่ดู** `?preview=employee`: พารามิเตอร์นี้มีผลแค่บังคับ layout มือถือใน `Layout.jsx` พนักงานเติมเองไม่ได้ทำให้เลี่ยงด่าน
+- ผู้ที่ล็อกอิน Google แล้วแต่ยังไม่ผูกรหัสพนักงาน (`pendingUser`) **ไม่ถูกบล็อก** (ยังไม่รู้ role; แอดมินคนใหม่อาจผูกบัญชีบนคอม) → ถูกบล็อกหลังผูกเสร็จ
+- ด่านอยู่ **ก่อน `Layout`** → คนที่ถูกบล็อกไม่โหลด BottomNav/Dashboard จึงไม่ยิงคิวรีเพิ่ม (เหลือแค่อ่านโปรไฟล์ + listener ใน `AuthContext`) — ดูหัวข้อโควตา Firestore
+- ⚠️ **เป็นการกันเชิง UX/นโยบาย ไม่ใช่เชิงความปลอดภัย**: เว็บรู้ชนิดอุปกรณ์จากที่เบราว์เซอร์รายงาน ปลอมได้ (F12 → Device toolbar, ส่วนขยายปลอม UA) และ Firestore Rules มองไม่เห็นชนิดอุปกรณ์ → ถ้าต้องการกันโกงจริงต้องแก้ rules (ดู "ข้อควรระวังที่ยังไม่ได้แก้": ผูกราคา/สต็อก/ประวัติด้วย `getAfter()`) ไม่ใช่บล็อก desktop; ตรวจ UA ฝั่ง Hosting ต้องใช้ Cloud Functions/Cloud Run (แผน Blaze) และก็ปลอมได้เหมือนกัน
+- ถ้ามือถือจริงถูกบล็อกผิด → Rollback ที่ Firebase Console → Hosting → Release history (หรือ revert แล้ว deploy ใหม่)
 
 ---
 
@@ -367,8 +384,9 @@ admin เห็น sidebar ซ้าย (เมนูเต็ม) — บนจ
 
 ## ✅ การทดสอบ
 
-- `npm test` (Jest, ไม่ต้องมีอะไรเพิ่ม): `importHistory.test.js` (ตรรกะนำเข้า) · `pointsLedger.test.js` (นิยามผลต่อยอด + ตรวจยอด) · `components/ImportHistoryModal.test.js` · `components/ReconcilePanel.test.js` · `pages/History.test.js` · `pages/AdminApprovals.test.js` (หน้าจอเดินสายถูก — mock Firestore)
+- `npm test` (Jest, ไม่ต้องมีอะไรเพิ่ม): `importHistory.test.js` (ตรรกะนำเข้า) · `pointsLedger.test.js` (นิยามผลต่อยอด + ตรวจยอด) · `components/ImportHistoryModal.test.js` · `components/ReconcilePanel.test.js` · `pages/History.test.js` · `pages/AdminApprovals.test.js` (หน้าจอเดินสายถูก — mock Firestore) · `deviceCheck.test.js` (ตารางเคส UA/ทัช: PC / มือถือ / iPad / มือถือโหมดเดสก์ท็อป / โน้ตบุ๊กจอทัช) · `components/DeviceGate.test.js` (พนักงาน+PC ถูกบล็อก, แอดมินผ่าน, `?preview=employee` ไม่ใช่ทางลัด) · `pages/Login.test.js` (ข้อความเตือนบนคอม ไม่ปิดปุ่มล็อกอิน)
   - ⚠️ CRA ตั้ง `resetMocks` → implementation ใน `jest.fn(...)` ของ mock ถูกล้างก่อนทุกเทสต์ ต้องตั้งค่าคืน (`mockResolvedValue`) ใน `beforeEach`/ในเทสต์
+  - ด่านบล็อกคอมพิวเตอร์ (`deviceCheck` + `DeviceGate` + ข้อความเตือนหน้า Login) ทำ mutation test แล้ว 15 จุด จับได้ครบ: ลบการยกเว้นแอดมิน / ไม่บล็อกใครเลย / ใช้ `?preview=employee` เป็นทางลัด / บล็อกตอน `profile = null` / นับเฉพาะ `role === 'employee'` / ปุ่มออกจากระบบไม่เรียก `logout` / ตัดสัญญาณ UA, iPadOS, pointer, hover ทีละข้อ / ไม่เช็ค `matchMedia` / ไม่กัน `env = null` / ข้อความเตือน Login ขึ้นแม้ไม่ใช่คอม-ขึ้นตอนผูกบัญชี-ไม่ขึ้นเลย (ถ้าแก้ไฟล์เหล่านี้ ควรลองแบบเดียวกัน)
   - `pages/Dashboard.test.js`: เส้นทางที่พนักงานทุกคนใช้ — กดแลก → ยืนยัน → `redeemReward` (ปกติ / ราคาเปลี่ยน / ของหมด / error อื่น / แต้มไม่พอ)
   - **`pointsFlow.e2e.test.js`** (end-to-end "แต้ม"): รัน **หน้าจอจริงทั้งสองฝั่งพร้อมกัน** — มือถือพนักงาน (`AuthProvider` จริง + `Dashboard` จริง + `pointsDb` จริง) กับหน้าแอดมิน (`AdminEmployees` จริง: ✏️ แก้ไข → ปรับแต้ม) บน Firestore จำลองในหน่วยความจำ (`testUtils/fakeFirestore.js`: transaction แบบ all-or-nothing, `onSnapshot` แจ้งหลัง commit, ไม่ตรวจ rules) — ยืนยันว่าแลกแล้วแต้มบนชิปลดและตรง DB (ไม่หักซ้ำ), แอดมินเพิ่ม/หักแต้มแล้วมือถือที่เปิดค้างเห็นทันทีโดยไม่รีโหลด + ปุ่มสลับ "แต้มไม่พอ!" ↔ "แลกเลย!" + แลกต่อได้, popup "แต้มที่ได้รับเดือนนี้" เห็นแต้มที่เพิ่ม
     - เคยทำ mutation test ยืนยันว่าเทสต์ไวจริง: ปิด `onSnapshot` ใน AuthContext → เคสแอดมินเพิ่ม/หัก fail 3/4; ทำให้ `redeemReward` หักสองเท่า → เคสแลก fail 3/4 (ถ้าแก้โค้ดส่วนนี้ ควรลองแบบเดียวกัน)

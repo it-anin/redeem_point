@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
+import DeviceGate from './components/DeviceGate'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Announcements from './pages/Announcements'
@@ -39,8 +40,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<Login />} />
 
-      {/* Protected layout */}
-      <Route element={<RequireAuth><Layout /></RequireAuth>}>
+      {/* Protected layout — พนักงานที่เปิดบนคอมพิวเตอร์ถูกบล็อกที่ DeviceGate (แอดมินผ่าน) */}
+      <Route element={<RequireAuth><DeviceGate><Layout /></DeviceGate></RequireAuth>}>
         <Route index element={<HomeRedirect />} />
 
         {/* Employee */}
