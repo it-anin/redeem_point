@@ -409,6 +409,49 @@ tr:hover td { background: var(--bg); }
 
 .hist-info { flex: 1; min-width: 0; }
 .hist-name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* หน้าประกาศ: ปัดอ่านทีละรายการ โดยเลื่อนหน้าในแนวตั้งได้ตามปกติ */
+.announcements-section { min-width: 0; }
+.announcements-list {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.announcements-list::-webkit-scrollbar { display: none; }
+.announcement-card {
+  box-sizing: border-box;
+  flex: 0 0 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+.announcements-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.announcements-position { min-width: 150px; text-align: center; color: var(--primary-dark); font-size: 14px; font-weight: 700; }
+.announcements-hint { display: block; margin-top: 2px; color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.announcements-nav-button {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--primary-dark);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.announcements-nav-button:disabled { opacity: .35; cursor: default; }
+.announcements-nav-button:focus-visible { outline: 3px solid var(--primary-dark); outline-offset: 2px; }
 .hist-date { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .hist-pts { font-size: 14px; font-weight: 800; flex-shrink: 0; }
 .hist-pts.neg { color: var(--primary-dark); }

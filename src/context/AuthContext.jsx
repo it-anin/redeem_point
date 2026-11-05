@@ -12,36 +12,56 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null)       // Firestore employee doc
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState('')     // ข้อความแจ้งเตือนตอนล็อกอินไม่ผ่าน
+  const [profileError, setProfileError] = useState('')
+  const [profileAttempt, setProfileAttempt] = useState(0)
 
   useEffect(() => {
     // ตรวจผลลัพธ์ signInWithRedirect (เผื่อ redirect กลับมาแล้ว error เช่น ถูกยกเลิก/เน็ตหลุด)
     getRedirectResult(auth).catch(() => {
       setAuthError('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
     })
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    let currentRequest = 0
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // จับคู่พนักงานด้วยอีเมล (doc id ของ employees = อีเมล)
-        const snap = await getDoc(doc(db, 'employees', firebaseUser.email))
-        if (snap.exists()) {
-          setUser(firebaseUser)
-          setProfile({ id: snap.id, ...snap.data() })
-          setPendingUser(null)
-          setAuthError('')
+      const request = ++currentRequest
+      setLoading(true)
+      setProfileError('')
+      try {
+        if (firebaseUser) {
+          // จับคู่พนักงานด้วยอีเมล (doc id ของ employees = อีเมล)
+          const snap = await getDoc(doc(db, 'employees', firebaseUser.email))
+          if (!active || request !== currentRequest) return
+          if (snap.exists()) {
+            setUser(firebaseUser)
+            setProfile({ id: snap.id, ...snap.data() })
+            setPendingUser(null)
+            setAuthError('')
+          } else {
+            // ยังไม่เคยผูกบัญชี → ให้ไปกรอกรหัสพนักงาน
+            setUser(null)
+            setProfile(null)
+            setPendingUser(firebaseUser)
+          }
         } else {
-          // ยังไม่เคยผูกบัญชี → ให้ไปกรอกรหัสพนักงาน
           setUser(null)
           setProfile(null)
-          setPendingUser(firebaseUser)
+          setPendingUser(null)
         }
-      } else {
+      } catch {
+        if (!active || request !== currentRequest) return
         setUser(null)
         setProfile(null)
         setPendingUser(null)
+        setProfileError('โหลดข้อมูลบัญชีไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง')
+      } finally {
+        if (active && request === currentRequest) setLoading(false)
       }
-      setLoading(false)
     })
-    return unsub
-  }, [])
+    return () => { active = false; unsub() }
+  }, [profileAttempt])
 
   const loginWithGoogle = async () => {
     setAuthError('')
@@ -88,7 +108,20 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{ user, pendingUser, profile, loading, authError, loginWithGoogle, linkWithCode, logout, patchProfile }}>
-      {!loading && children}
+      {!loading && (profileError ? (
+        <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div className="card" role="alert" style={{ width: '100%', maxWidth: 400, textAlign: 'center' }}>
+            <p style={{ marginBottom: 16 }}>{profileError}</p>
+            <button className="btn-primary" type="button" onClick={() => { setLoading(true); setProfileAttempt(attempt => attempt + 1) }}>
+              ลองอีกครั้ง
+            </button>
+            <button type="button" onClick={() => logout().catch(() => setProfileError('ออกจากระบบไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง'))}
+              style={{ display: 'block', margin: '16px auto 0', background: 'none', border: 'none', color: 'var(--primary-dark)', cursor: 'pointer' }}>
+              ใช้บัญชี Google อื่น
+            </button>
+          </div>
+        </div>
+      ) : children)}
     </AuthContext.Provider>
   )
 }

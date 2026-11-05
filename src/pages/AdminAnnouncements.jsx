@@ -82,6 +82,13 @@ export default function AdminAnnouncements() {
         </button>
       </div>
 
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '12px 16px', marginBottom: 16 }}>
+        <div style={{ color: 'var(--primary-dark)', fontSize: 14, fontWeight: 800 }}>📢 โพสต์ประกาศแยกกันได้หลายรายการ</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4, lineHeight: 1.5 }}>
+          โพสต์ทีละประกาศ แล้วกด “+ เพิ่มประกาศ” เพื่อเพิ่มรายการถัดไป พนักงานสามารถปัดซ้าย–ขวาเพื่ออ่านแต่ละประกาศบนมือถือได้
+        </div>
+      </div>
+
       {msg.text && (
         <div style={{ background: msg.type === 'success' ? '#D1FAE5' : '#FEE2E2', color: msg.type === 'success' ? '#065F46' : '#991B1B', padding: '12px 18px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontWeight: 700 }}>
           {msg.type === 'success' ? '✅' : '⚠️'} {msg.text}
