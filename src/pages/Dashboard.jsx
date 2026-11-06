@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { collection, getDocs, doc, getDoc, runTransaction, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import RewardCard from '../components/RewardCard'
+import RewardSectionLabel from '../components/RewardSectionLabel'
 
 // อัปโหลดรูปขึ้น Cloudinary (unsigned) แล้วคืน URL
 async function uploadToCloudinary(file) {
@@ -236,64 +238,32 @@ export default function Dashboard() {
   const specialRewards = rewards.filter(r => r.type === 'special')
   const normalRewards  = rewards.filter(r => r.type !== 'special')
 
-  const renderCard = (r) => (
-    <div key={r.id} className="card" style={{ textAlign: 'center', position: 'relative', fontFamily: 'Itim, sans-serif' }}>
-      {r.unlimited ? (
-        <span className="badge" style={{ position: 'absolute', top: 12, right: 12, background: '#fff', color: 'var(--primary-dark)', border: '1px solid var(--border)' }}>♾️ ไม่จำกัด</span>
-      ) : r.stock === 0 ? (
-        <span className="badge badge-danger" style={{ position: 'absolute', top: 12, right: 12 }}>หมดแล้ว</span>
-      ) : (
-        <span className="badge" style={{ position: 'absolute', top: 12, right: 12, background: '#fff', color: r.stock <= 3 ? '#991B1B' : 'var(--primary-dark)', border: '1px solid var(--border)' }}>เหลือ {r.stock}</span>
-      )}
-      <div style={{ width: '100%', height: 140, borderRadius: 14, background: 'var(--bg)', border: '1.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 56, marginBottom: 12, overflow: 'hidden' }}>
-        {r.image
-          ? <img src={r.image} alt={r.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : (r.emoji ?? '🎁')}
-      </div>
-      {(() => {
-        const idx = r.name?.indexOf('มูลค่า') ?? -1
-        if (idx > 0) {
-          return (
-            <div style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{r.name.slice(0, idx).trim()}</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>{r.name.slice(idx).trim()}</div>
-            </div>
-          )
-        }
-        return <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{r.name}</div>
-      })()}
-      {r.type === 'special' ? (
-        <div style={{ marginBottom: 6 }}><span className="badge badge-warn badge-pulse">🌟 รางวัลพิเศษ</span></div>
-      ) : (
-        <div style={{ marginBottom: 6 }}><span className="badge" style={{ background: '#fff', color: 'var(--primary-dark)', border: '1px solid var(--border)' }}>🎁 รางวัลปกติ</span></div>
-      )}
-      {r.description && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>{r.description}</div>}
-      <div className="cost-pill">⭐ {r.pointCost?.toLocaleString()} แต้ม</div>
-      {(() => {
-        const outOfStock = !r.unlimited && r.stock === 0
-        const canAfford = (profile?.points ?? 0) >= r.pointCost
-        const masterClosed = redeemCfg.open === false   // admin ปิดการแลก
-        const blocked = masterClosed || !redeemOpen      // ปิด หรือ ยังไม่ถึงเวลา
-        // กดไม่ได้เฉพาะกรณี blocked + ของยังมี; ถ้าหมดแล้ว/แต้มไม่พอ กดได้เพื่อเด้ง popup
-        const disabled = blocked && !outOfStock
-        return (
-          <button
-            className="btn-primary"
-            style={{ width: '100%', marginTop: 12, padding: '10px', opacity: (disabled || outOfStock || !canAfford) ? 0.55 : 1, cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'Itim, sans-serif' }}
-            disabled={disabled}
-            onClick={() => {
-              if (outOfStock) { setSoldOut(true); return }
-              if (blocked) return
-              if (!canAfford) { setNotEnough(true); return }
-              handleRedeem(r)
-            }}
-          >
-            {outOfStock ? 'หมดแล้ว' : masterClosed ? '🔴 งดแลกชั่วคราว' : !redeemOpen ? `⏰ เปิดแลก ${fmtWhen(redeemCfg)} น.` : !canAfford ? 'แต้มไม่พอ!' : 'แลกเลย!'}
-          </button>
-        )
-      })()}
-    </div>
-  )
+  const renderCard = (r) => {
+    const outOfStock = !r.unlimited && r.stock === 0
+    const canAfford = (profile?.points ?? 0) >= r.pointCost
+    const masterClosed = redeemCfg.open === false
+    const blocked = masterClosed || !redeemOpen
+    // ของหมดและแต้มไม่พอยังกดเพื่อเปิด popup เดิมได้
+    const disabled = blocked && !outOfStock
+    const state = outOfStock ? 'soldout' : masterClosed ? 'paused' : !redeemOpen ? 'scheduled' : !canAfford ? 'insufficient' : 'ready'
+    const buttonLabel = outOfStock ? 'หมดแล้ว' : masterClosed ? 'งดแลกชั่วคราว' : !redeemOpen ? `เปิดแลก ${fmtWhen(redeemCfg)} น.` : !canAfford ? 'แต้มไม่พอ!' : 'แลกเลย!'
+
+    return (
+      <RewardCard
+        key={r.id}
+        reward={r}
+        state={state}
+        disabled={disabled}
+        buttonLabel={buttonLabel}
+        onRedeem={() => {
+          if (outOfStock) { setSoldOut(true); return }
+          if (blocked) return
+          if (!canAfford) { setNotEnough(true); return }
+          handleRedeem(r)
+        }}
+      />
+    )
+  }
 
   return (
     <>
@@ -342,9 +312,7 @@ export default function Dashboard() {
         <>
           {specialRewards.length > 0 && (
             <div style={{ marginBottom: 24 }}>
-              <div className="shine-sweep" style={{ display: 'inline-block', marginBottom: 16, borderRadius: 30 }}>
-                <img src="/bannerspecial.png" alt="รางวัลพิเศษ" style={{ maxWidth: 200, height: 'auto', display: 'block' }} />
-              </div>
+              <RewardSectionLabel type="special" />
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
                 {specialRewards.map(renderCard)}
               </div>
@@ -352,9 +320,7 @@ export default function Dashboard() {
           )}
 
           <div>
-            <div className="card normal-card" style={{ display: 'inline-block', marginBottom: 16, padding: '12px 24px' }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary-dark)' }}>🎁 รางวัลปกติ</div>
-            </div>
+            <RewardSectionLabel type="normal" />
             {normalRewards.length === 0 ? (
               <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>ยังไม่มีรางวัล</div>
             ) : (

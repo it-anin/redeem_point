@@ -18,6 +18,16 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+firebase-debug.log*
+
+# Generated reward design previews and download archives
+# Regenerate with the build.cjs script in each design directory.
+/reward-card-designs/*.html
+/reward-label-designs/*.html
+/reward-card-designs.zip
+/reward-label-designs.zip
+/reward-card-designs/reward-card-designs/
+/reward-label-designs/reward-label-designs/
 
 # misc
 .DS_Store

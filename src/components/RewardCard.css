@@ -1,0 +1,157 @@
+/* Happy Doodle — design 20 from reward-card-designs. */
+.reward-doodle {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  min-height: 316px;
+  padding: 12px;
+  border: 1.5px solid #b98c69;
+  border-radius: 24px 18px 26px 17px;
+  background: #fffdf4;
+  box-shadow: 3px 3px 0 #efcfb452;
+  color: var(--text);
+  text-align: center;
+  font-family: 'Itim', sans-serif;
+}
+
+.reward-doodle__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.reward-doodle__stock {
+  position: absolute;
+  z-index: 3;
+  top: 9px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 22px;
+  padding: 3px 7px;
+  border: 1px solid #d9b28e;
+  border-radius: 20px;
+  background: #fffaf0;
+  color: var(--primary-dark);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  transform: rotate(3deg);
+}
+
+.reward-doodle__stock .reward-doodle__icon { width: 12px; height: 12px; }
+.reward-doodle__stock.is-low { color: #991b1b; }
+.reward-doodle__stock.is-empty { background: #ffebea; border-color: #ffd9d7; color: #a33432; }
+
+.reward-doodle__decoration { position: absolute; z-index: 2; pointer-events: none; }
+.reward-doodle__decoration--star { top: 38px; left: 6px; color: #cda750; transform: rotate(-14deg); }
+.reward-doodle__decoration--star .reward-doodle__icon { width: 24px; height: 24px; }
+.reward-doodle__decoration--heart { top: 118px; right: 7px; color: #c88e75; transform: rotate(14deg); }
+.reward-doodle__decoration--heart .reward-doodle__icon { width: 17px; height: 17px; }
+
+.reward-doodle__media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 100%;
+  height: 137px;
+  overflow: hidden;
+  border: 1px dashed #d7b18a;
+  border-radius: 47% 53% 43% 57% / 48% 43% 57% 52%;
+  background: #fff0d4;
+  font-size: 56px;
+  transform: rotate(-3deg);
+}
+
+.reward-doodle__media img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.reward-doodle__info { width: 100%; padding-top: 10px; overflow-wrap: anywhere; }
+.reward-doodle__info h3 { margin: 0; font-size: 14px; font-weight: 400; line-height: 1.4; }
+.reward-doodle__info p { margin: 2px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+
+.reward-doodle__type {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 21px;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 3px 7px;
+  background: linear-gradient(transparent 30%, #fff0b2 30%, #fff0b2 90%, transparent 90%);
+  color: #925634;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.reward-doodle__type .reward-doodle__icon { width: 12px; height: 12px; }
+.reward-doodle__type.is-special { color: #87591d; }
+.reward-doodle__type.is-special .reward-doodle__icon { color: #d4a12c; fill: #f9d877; }
+.reward-doodle__description { width: 100%; margin: 6px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+
+.reward-doodle__cost {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: auto;
+  padding: 7px 0 3px;
+  color: var(--primary-dark);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.reward-doodle__cost::after { content: ''; position: absolute; bottom: 0; left: calc(50% - 30px); width: 60px; height: 3px; border-radius: 70%; background: #f5db95; transform: rotate(-3deg); }
+.reward-doodle__cost .reward-doodle__icon { width: 16px; height: 16px; fill: #f6d36c; color: #d7a632; }
+.reward-doodle__cost strong { font-family: 'Nunito', sans-serif; font-size: 18px; font-weight: 800; line-height: 1.2; letter-spacing: -.6px; }
+
+.reward-doodle__redeem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 38px;
+  margin-top: 9px;
+  padding: 9px 6px;
+  border: 1px solid #c79570;
+  border-radius: 11px 8px 12px 8px;
+  background: #f9d8ba;
+  color: #8d4826;
+  font-family: 'Itim', sans-serif;
+  font-size: 13px;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background .18s, box-shadow .18s, transform .18s;
+}
+
+.reward-doodle__redeem .reward-doodle__icon { width: 15px; height: 15px; }
+.reward-doodle__redeem span { min-width: 0; overflow-wrap: anywhere; }
+.reward-doodle__redeem:hover:not(:disabled) { background: #f7bf9d; box-shadow: 0 3px 8px #ae683e14; transform: translateY(-1px); }
+.reward-doodle__redeem:active:not(:disabled) { transform: translateY(0); }
+.reward-doodle__redeem:focus-visible { outline: 3px solid var(--primary-dark); outline-offset: 3px; }
+.reward-doodle__redeem:disabled { cursor: not-allowed; }
+.reward-doodle[data-state='soldout'] .reward-doodle__redeem,
+.reward-doodle[data-state='paused'] .reward-doodle__redeem { background: #fae9df; border-color: #f4dcd0; color: #8c6b58; }
+.reward-doodle[data-state='soldout'] .reward-doodle__media img { opacity: .58; }
+.reward-doodle[data-state='soldout'] .reward-doodle__cost { opacity: .65; }
+.reward-doodle[data-state='scheduled'] .reward-doodle__redeem { background: #fff4e8; border-color: #eddbbf; color: #8a643e; font-size: 11px; gap: 4px; }
+.reward-doodle[data-state='insufficient'] .reward-doodle__redeem { background: #fff5ee; border-color: #e9c4ac; color: #8c5738; }
+
+@media (max-width: 365px) {
+  .reward-doodle { padding-inline: 10px; }
+  .reward-doodle__info h3 { font-size: 13px; }
+  .reward-doodle__info p { font-size: 11px; }
+  .reward-doodle__stock { padding-inline: 5px; font-size: 9px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reward-doodle__redeem { transition: none; }
+}
